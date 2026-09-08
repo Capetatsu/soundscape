@@ -1,0 +1,41 @@
+<!doctype html>
+<html class="dark" lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>Soundscape - Spotify Music & Lossless Player</title>
+    <meta name="description" content="Full-featured Spotify client with real OAuth PKCE, Web Playback SDK, lossless HiFi settings, lyrics, AI DJ, and device connect." />
+    <meta property="og:title" content="Soundscape - Spotify Music & Lossless Player" />
+    <meta property="og:description" content="Full-featured Spotify client with real OAuth PKCE, Web Playback SDK, lossless HiFi settings, lyrics, AI DJ, and device connect." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet" />
+    <!-- Pre-initialize Spotify Web Playback SDK hook and add cross-origin script guard -->
+    <script>
+      window.onSpotifyWebPlaybackSDKReady = window.onSpotifyWebPlaybackSDKReady || function() {};
+      window.addEventListener('error', function(event) {
+        if (event.message === 'Script error.' || (event.filename && (event.filename.includes('scdn.co') || event.filename.includes('spotify')))) {
+          console.warn('[Soundscape] Intercepted cross-origin script notice:', event.message);
+          event.preventDefault();
+          return true;
+        }
+      });
+      window.addEventListener('unhandledrejection', function(event) {
+        if (event.reason && (String(event.reason).includes('Script error') || String(event.reason).includes('scdn.co'))) {
+          console.warn('[Soundscape] Intercepted unhandled cross-origin rejection:', event.reason);
+          event.preventDefault();
+        }
+      });
+    </script>
+    <!-- Spotify Web Playback SDK for real streaming playback -->
+    <script crossorigin="anonymous" src="https://sdk.scdn.co/spotify-player.js" defer></script>
+  </head>
+  <body class="bg-[#131313] text-[#e5e2e1] min-h-screen flex flex-col antialiased selection:bg-[#53e076] selection:text-[#003914]">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+
