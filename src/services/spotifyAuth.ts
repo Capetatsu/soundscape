@@ -1,4 +1,5 @@
 import { DEFAULT_CLIENT_ID } from '../data/defaultCatalog';
+import { REDIRECT_URI } from '../config/redirectUri';
 
 const SPOTIFY_SCOPES = [
   'user-read-private',
@@ -27,8 +28,6 @@ export class SpotifyAuthService {
   private static expiresAtKey = 'spotify_token_expires_at';
   private static verifierKey = 'spotify_pkce_verifier';
 
-  private static redirectUriKey = 'soundscape_custom_redirect_uri';
-
   static getScopes(): string[] {
     return SPOTIFY_SCOPES.split(' ');
   }
@@ -56,21 +55,12 @@ export class SpotifyAuthService {
   }
 
   static getRedirectUri(): string {
-    const custom = localStorage.getItem(this.redirectUriKey);
-    if (custom && custom.trim()) {
-      return custom.trim();
-    }
-    // Exact redirect URI without trailing hash
-    const origin = window.location.origin;
-    return `${origin}/auth/callback`;
+    return REDIRECT_URI;
   }
 
   static setRedirectUri(uri: string): void {
-    if (uri && uri.trim()) {
-      localStorage.setItem(this.redirectUriKey, uri.trim());
-    } else {
-      localStorage.removeItem(this.redirectUriKey);
-    }
+    // No-op: redirect URI is now controlled via VITE_REDIRECT_URI environment variable
+    console.warn('[Soundscape Auth] setRedirectUri is deprecated. Use VITE_REDIRECT_URI env var instead.');
   }
 
   static setManualToken(token: string, expiresIn = 3600): void {

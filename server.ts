@@ -3,6 +3,7 @@ import path from 'path';
 import dotenv from 'dotenv';
 import { GoogleGenAI } from '@google/genai';
 import { createServer as createViteServer } from 'vite';
+import { REDIRECT_URI } from './server/config/redirectUri';
 
 dotenv.config();
 
@@ -30,11 +31,10 @@ const getGeminiClient = () => {
 // API: Config check
 app.get('/api/config', (req, res) => {
   const clientId = process.env.SPOTIFY_CLIENT_ID || '5822fb3ce1814fc4916d228c580a8a0a';
-  const appUrl = process.env.APP_URL || `http://localhost:${PORT}`;
   res.json({
     clientId,
-    appUrl,
-    redirectUri: `${appUrl}/auth/callback`,
+    appUrl: REDIRECT_URI.replace('/auth/callback', ''),
+    redirectUri: REDIRECT_URI,
     hasGeminiKey: !!process.env.GEMINI_API_KEY
   });
 });

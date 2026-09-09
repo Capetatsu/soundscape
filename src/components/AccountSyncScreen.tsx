@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { SpotifyUser } from '../types';
 import { SpotifyAuthService } from '../services/spotifyAuth';
+import { REDIRECT_URI } from '../config/redirectUri';
 
 interface AccountSyncScreenProps {
   user: SpotifyUser | null;
@@ -37,9 +38,8 @@ export const AccountSyncScreen: React.FC<AccountSyncScreenProps> = ({
   const [connectTab, setConnectTab] = useState<'oauth' | 'manual'>('oauth');
 
   // Exact callback URLs
-  const devCallbackUrl = 'https://ais-dev-whe3gjhingjdcwlzrwn6or-465439636391.asia-southeast1.run.app/auth/callback';
-  const sharedCallbackUrl = 'https://ais-pre-whe3gjhingjdcwlzrwn6or-465439636391.asia-southeast1.run.app/auth/callback';
-  const currentOriginCallback = `${window.location.origin}/auth/callback`;
+  const devCallbackUrl = REDIRECT_URI;
+  const sharedCallbackUrl = REDIRECT_URI;
 
   useEffect(() => {
     setCustomClientId(clientId);
