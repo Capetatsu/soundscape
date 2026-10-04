@@ -28,11 +28,89 @@ export class SpotifyAuthService {
   private static expiresAtKey = 'spotify_token_expires_at';
   private static verifierKey = 'spotify_pkce_verifier';
 
+  // BFF session tokens: memory-only, NEVER persisted (spec 21_SECURITY.md).
+  private static memToken: string | null = null;
+  private static memExpiresAt = 0;
+  private static bffConnected = false;
+
+  /** Prefer the BFF session (server-held refresh token). Falls back to legacy localStorage flow. */
+  static async initBffSession(): Promise<'connected' | 'revoked' | 'none' | 'legacy'> {
+    try {
+      const res = await fetch('/api/auth/status', { headers: { 'X-Requested-With': 'Soundscape' } });
+      if (!res.ok) return this.isAuthenticated() ? 'legacy' : 'none';
+      const data = await res.json() as { state?: string };
+      if (data.state === 'connected') {
+        const tok = await this.bffFetchToken();
+        this.bffConnected = !!tok;
+        return tok ? 'connected' : 'revoked';
+      }
+      if (data.state === 'revoked') {
+        this.bffConnected = false;
+        this.memToken = null;
+        return 'revoked';
+      }
+      return this.isAuthenticated() ? 'legacy' : 'none';
+    } catch {
+      return this.isAuthenticated() ? 'legacy' : 'none';
+    }
+  }
+
+  static async bffFetchToken(): Promise<string | null> {
+    try {
+      const res = await fetch('/api/auth/token', { headers: { 'X-Requested-With': 'Soundscape' } });
+      if (!res.ok) {
+        this.memToken = null;
+        return null;
+      }
+      const data = await res.json() as { access_token?: string; expires_at?: number };
+      if (data.access_token) {
+        this.memToken = data.access_token;
+        this.memExpiresAt = data.expires_at || Date.now() + 3600_000;
+        this.bffConnected = true;
+        return data.access_token;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Full-page redirect into server-side PKCE login (recommended flow). */
+  static bffLogin(): void {
+    window.location.href = '/auth/spotify/login';
+  }
+
+  static async bffLogout(): Promise<void> {
+    this.memToken = null;
+    this.memExpiresAt = 0;
+    this.bffConnected = false;
+    try {
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'Soundscape' }
+      });
+    } catch {
+      // logout is best-effort client-side; server cookie may already be gone
+    }
+  }
+
+  static isBffConnected(): boolean {
+    return this.bffConnected && !!this.memToken && Date.now() < this.memExpiresAt - 60_000;
+  }
+
   static getScopes(): string[] {
     return SPOTIFY_SCOPES.split(' ');
   }
 
   static getTokenExpirationDetails(): { isExpired: boolean; expiresInMs: number; expiresAt: number | null } {
+    if (this.memToken) {
+      const diff = this.memExpiresAt - Date.now();
+      return {
+        isExpired: diff <= 0,
+        expiresInMs: Math.max(0, diff),
+        expiresAt: this.memExpiresAt
+      };
+    }
     const expiresAtStr = localStorage.getItem(this.expiresAtKey);
     if (!expiresAtStr) return { isExpired: true, expiresInMs: 0, expiresAt: null };
     const expiresAt = parseInt(expiresAtStr, 10);
@@ -73,6 +151,8 @@ export class SpotifyAuthService {
   }
 
   static getAccessToken(): string | null {
+    // BFF memory token first (never persisted); legacy localStorage second.
+    if (this.memToken && Date.now() < this.memExpiresAt - 60_000) return this.memToken;
     const token = localStorage.getItem(this.tokenKey);
     const expiresAt = localStorage.getItem(this.expiresAtKey);
     if (!token || !expiresAt) return null;
@@ -84,12 +164,15 @@ export class SpotifyAuthService {
   }
 
   static isTokenExpired(): boolean {
+    // BFF memory token counts as valid while unexpired (never persisted).
+    if (this.memToken && Date.now() < this.memExpiresAt - 60_000) return false;
     const expiresAt = localStorage.getItem(this.expiresAtKey);
     if (!expiresAt) return true;
     return Date.now() > parseInt(expiresAt, 10) - 60000; // 1 min buffer
   }
 
   static isAuthenticated(): boolean {
+    if (this.memToken && Date.now() < this.memExpiresAt - 60_000) return true;
     return !!localStorage.getItem(this.tokenKey);
   }
 
@@ -216,6 +299,11 @@ export class SpotifyAuthService {
   }
 
   static async refreshToken(): Promise<string | null> {
+    // BFF session refreshes server-side; never expose the refresh token.
+    if (this.bffConnected || this.memToken) {
+      const t = await this.bffFetchToken();
+      if (t) return t;
+    }
     const refreshToken = localStorage.getItem(this.refreshTokenKey);
     const clientId = this.getClientId();
     if (!refreshToken) return null;
@@ -268,6 +356,10 @@ export class SpotifyAuthService {
   }
 
   static disconnect(): void {
+    this.memToken = null;
+    this.memExpiresAt = 0;
+    this.bffConnected = false;
+    void this.bffLogout();
     localStorage.removeItem(this.tokenKey);
     localStorage.removeItem(this.refreshTokenKey);
     localStorage.removeItem(this.expiresAtKey);

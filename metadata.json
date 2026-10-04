@@ -1,6 +1,6 @@
 {
-  "name": "Soundscape - Spotify Music & Lossless Player",
-  "description": "Full-featured Spotify client with real OAuth PKCE, Web Playback SDK, lossless HiFi settings, lyrics, AI DJ, and device connect.",
+  "name": "Soundscape - Free Music Player",
+  "description": "Free full-length music player: open catalogues (Audius, Jamendo, Internet Archive), live radio, local files with EQ, lyrics, AI DJ, stats, and optional Spotify library sync.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
