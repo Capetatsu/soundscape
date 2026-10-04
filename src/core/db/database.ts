@@ -161,8 +161,7 @@ export const db = {
   async getPlaylists(): Promise<DbPlaylist[]> {
     return tx('playlist', 'readonly', (s) => s.getAll());
   },
-  async getTracksByUris(uris: string[]): Promise<DbTrack[]> {
-    const conn = await openDb();
+  async getTracksByUris(uris: string[]): Promise<DbTrack[]> {    const conn = await openDb();
     const out: DbTrack[] = [];
     await new Promise<void>((resolve, reject) => {
       const t = conn.transaction('track', 'readonly');
@@ -191,8 +190,31 @@ export const db = {
     });
     return out;
   },
-  async getSavedTracks(accountId: string): Promise<DbSavedTrack[]> {
-    const all = (await tx<DbSavedTrack[]>('saved_track', 'readonly', (s) => s.getAll())) as DbSavedTrack[];
+  async getTracksByProvider(provider: string, limit = 100): Promise<DbTrack[]> {
+    const conn = await openDb();
+    return new Promise<DbTrack[]>((resolve, reject) => {
+      const out: DbTrack[] = [];
+      const t = conn.transaction('track', 'readonly');
+      const cursorReq = t.objectStore('track').openCursor();
+      cursorReq.onsuccess = () => {
+        const c = cursorReq.result;
+        if (c && out.length < limit) {
+          const v = c.value as DbTrack;
+          if (v.provider === provider) out.push(v);
+          c.continue();
+        }
+      };
+      t.oncomplete = () => {
+        resolve(out);
+        conn.close();
+      };
+      t.onerror = () => {
+        reject(t.error);
+        conn.close();
+      };
+    });
+  },
+  async getSavedTracks(accountId: string): Promise<DbSavedTrack[]> {    const all = (await tx<DbSavedTrack[]>('saved_track', 'readonly', (s) => s.getAll())) as DbSavedTrack[];
     return all
       .filter((r) => r.accountId === accountId)
       .sort((a, b) => (b.addedAt || '').localeCompare(a.addedAt || ''));

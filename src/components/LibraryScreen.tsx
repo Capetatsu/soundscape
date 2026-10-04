@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
-import { SpotifyPlaylist, SpotifyUser } from '../types';
+import React, { useState, useEffect } from 'react';
+import { SpotifyPlaylist, SpotifyUser, SpotifyTrack } from '../types';
+import { db } from '../core/db/database';
+import { dbTrackToUi } from '../core/sync/toUi';
 
 interface LibraryScreenProps {
   playlists: SpotifyPlaylist[];
@@ -9,6 +11,7 @@ interface LibraryScreenProps {
   onOpenSync: () => void;
   onCreatePlaylist?: () => void;
   onPlayLocalFiles?: (files: File[]) => void;
+  onPlayTrack?: (track: SpotifyTrack) => void;
 }
 
 export const LibraryScreen: React.FC<LibraryScreenProps> = ({
@@ -17,12 +20,27 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
   user,
   onSelectPlaylist,
   onOpenSync,
-  onPlayLocalFiles
+  onPlayLocalFiles,
+  onPlayTrack
 }) => {
   const [activeFilter, setActiveFilter] = useState<'all' | 'playlists'>('all');
   const [isGridView, setIsGridView] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [localError, setLocalError] = useState<string | null>(null);
+  const [localTracks, setLocalTracks] = useState<SpotifyTrack[]>([]);
+
+  // Previously played device files (metadata only — blobs don't survive reload).
+  useEffect(() => {
+    let live = true;
+    db.getTracksByProvider('local', 50)
+      .then((rows) => {
+        if (live && rows.length > 0) setLocalTracks(rows.map(dbTrackToUi));
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
 
   const filterTabs = [
     { id: 'all', label: 'All' },
@@ -120,6 +138,33 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
         </label>
       </div>
       {localError && <p className="text-[11px] text-[#ffb4ab]">{localError}</p>}
+
+      {/* Previously played device files: metadata persists, audio needs re-adding after reload */}
+      {localTracks.length > 0 && (
+        <div>
+          <h2 className="text-sm font-bold text-[#e5e2e1] mb-2">On this device · heard before</h2>
+          <div className="space-y-1">
+            {localTracks.map((t) => (
+              <div
+                key={t.id}
+                onClick={() => onPlayTrack?.(t)}
+                className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-[#201f1f] cursor-pointer group"
+              >
+                <div className="w-10 h-10 rounded-lg bg-[#131313] flex-shrink-0 flex items-center justify-center text-[#c6c6c7]">
+                  <span className="material-symbols-outlined text-lg">audio_file</span>
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-bold text-[#e5e2e1] truncate">{t.name}</p>
+                  <p className="text-[11px] text-[#c6c6c7] truncate">
+                    {t.artists?.map((a) => a.name).join(', ')} · needs re-adding after reload
+                  </p>
+                </div>
+                <span className="material-symbols-outlined text-[#c6c6c7] group-hover:text-white">play_arrow</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Sorting & Layout View Bar */}
       <div className="flex items-center justify-between text-xs font-semibold text-[#c6c6c7] pt-1">

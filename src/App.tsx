@@ -455,23 +455,39 @@ export const App: React.FC = () => {
         setPlaybackNotice('Local file is no longer available in this session. Re-add it from Your Library.');
         return;
       }
-      void audioService.playLocalFile({ name: track.name, url });
+      void audioService.playLocalFile({
+        name: track.name,
+        url,
+        artist: track.artists?.[0]?.name,
+        trackId: track.id,
+        trackUri: track.uri
+      });
       return;
     }
     void audioService.playTrack(track);
   };
 
   const handlePlayLocalFiles = (files: File[]) => {
+    const parseName = (fileName: string): { title: string; artist: string } => {
+      const base = fileName.replace(/\.[a-z0-9]+$/i, '');
+      // "Artist - Title" convention; otherwise the filename is the title.
+      const sep = base.indexOf(' - ');
+      if (sep > 0) {
+        return { artist: base.slice(0, sep).trim() || 'Local file', title: base.slice(sep + 3).trim() || base };
+      }
+      return { title: base, artist: 'Local file' };
+    };
     const tracks: SpotifyTrack[] = files.map((f) => {
       const url = URL.createObjectURL(f);
-      const base = f.name.replace(/\.[a-z0-9]+$/i, '');
-      const id = `local-${base.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40)}-${f.size % 100000}`;
+      const { title, artist } = parseName(f.name);
+      const slug = `${title.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 30)}-${f.size}-${f.lastModified}`;
+      const id = `local-${slug}`;
       localUrls.current.set(id, url);
       return {
         id,
-        uri: `local:${id.slice(6)}`,
-        name: base,
-        artists: [{ name: 'Local file' }],
+        uri: `local:${slug}`,
+        name: title,
+        artists: [{ name: artist }],
         album: { name: 'On this device', images: [] },
         duration_ms: 0,
         preview_url: null,
@@ -709,6 +725,7 @@ export const App: React.FC = () => {
             onSelectPlaylist={handleSelectPlaylist}
             onOpenSync={() => setCurrentScreen('account_sync')}
             onPlayLocalFiles={handlePlayLocalFiles}
+            onPlayTrack={handlePlayTrack}
           />
         )}
 

@@ -262,12 +262,20 @@ export class AudioPlayerService {
     high.frequency.value = 4000;
     const norm = ctx.createGain();
     norm.gain.value = 1;
+    // Transparent safety limiter: only engages on peaks (EQ boosts + hot masters).
+    const limiter = ctx.createDynamicsCompressor();
+    limiter.threshold.value = -3;
+    limiter.knee.value = 1;
+    limiter.ratio.value = 20;
+    limiter.attack.value = 0.002;
+    limiter.release.value = 0.12;
     src.connect(low);
     low.connect(mid);
     mid.connect(high);
     high.connect(norm);
-    norm.connect(ctx.destination);
-    this.dsp = { ctx, low, mid, high, norm };
+    norm.connect(limiter);
+    limiter.connect(ctx.destination);
+    this.dsp = { ctx, low, mid, high, norm, limiter };
     this.applyEq();
   }
 
@@ -426,7 +434,7 @@ export class AudioPlayerService {
    * Play a user-owned local audio file (File API / same-origin URL).
    * Real <audio> playback — EQ/normalization apply (local DSP chain).
    */
-  public async playLocalFile(input: { name: string; url: string; type?: string }): Promise<{ success: boolean; mode: PlaybackMode; error?: string }> {
+  public async playLocalFile(input: { name: string; url: string; type?: string; artist?: string; trackId?: string; trackUri?: string }): Promise<{ success: boolean; mode: PlaybackMode; error?: string }> {
     const base = input.name.replace(/\.[a-z0-9]+$/i, '');
     const slug = base.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40) || 'file';
     if (!this.normalizationOn && this.dsp) {
@@ -437,12 +445,12 @@ export class AudioPlayerService {
     return this.startElementPlayback(
       {
         name: base,
-        artist: 'Local file',
+        artist: input.artist ?? 'Local file',
         imageUrl: null,
         durationMs: 0,
         url: input.url,
-        trackUri: `local:${slug}`,
-        trackId: `local-${slug}`,
+        trackUri: input.trackUri ?? `local:${slug}`,
+        trackId: input.trackId ?? `local-${slug}`,
         mode: 'local',
         notice: 'Playing a file from this device. Spotify EQ/DSP does not apply.'
       },
