@@ -214,6 +214,12 @@ export const db = {
       };
     });
   },
+  async getPlaylistTrackRows(playlistUri: string): Promise<DbPlaylistTrack[]> {
+    const all = await tx<DbPlaylistTrack[]>('playlist_track', 'readonly', (s) => s.getAll());
+    return (all as DbPlaylistTrack[])
+      .filter((r) => r.playlistUri === playlistUri)
+      .sort((a, b) => a.position - b.position);
+  },
   async getSavedTracks(accountId: string): Promise<DbSavedTrack[]> {    const all = (await tx<DbSavedTrack[]>('saved_track', 'readonly', (s) => s.getAll())) as DbSavedTrack[];
     return all
       .filter((r) => r.accountId === accountId)

@@ -36,6 +36,7 @@ import { QueueDrawer } from './components/QueueDrawer';
 import { AiDjModal } from './components/AiDjModal';
 import { DiagnosticsModal } from './components/DiagnosticsModal';
 import { LyricsModal } from './components/LyricsModal';
+import { PlaylistPicker } from './components/PlaylistPicker';
 import { StatsScreen } from './components/StatsScreen';
 import { RadioScreen } from './components/RadioScreen';
 import { radioCountClick, type RadioStation } from './core/providers/radio/radioClient';
@@ -74,6 +75,7 @@ export const App: React.FC = () => {
   const [isAiDjOpen, setIsAiDjOpen] = useState(false);
   const [isDiagnosticsOpen, setIsDiagnosticsOpen] = useState(false);
   const [isLyricsOpen, setIsLyricsOpen] = useState(false);
+  const [playlistTarget, setPlaylistTarget] = useState<SpotifyTrack | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
 
   // Real sync state (M4): report with true DB-diff counters + last-sync timestamps.
@@ -707,6 +709,7 @@ export const App: React.FC = () => {
               setQueue((prev) => [...prev, track]);
               setPlaybackNotice(`Queued: ${track.name}`);
             }}
+            onAddToPlaylist={(track) => setPlaylistTarget(track)}
             onPlayArchiveRecording={handlePlayArchiveRecording}
             onSelectPlaylist={handleSelectPlaylist}
             onSelectAlbum={handleSelectAlbum}
@@ -726,6 +729,16 @@ export const App: React.FC = () => {
             onOpenSync={() => setCurrentScreen('account_sync')}
             onPlayLocalFiles={handlePlayLocalFiles}
             onPlayTrack={handlePlayTrack}
+            onPlayTracks={(tracks) => {
+              if (tracks.length === 0) return;
+              const [first, ...rest] = tracks;
+              if (rest.length > 0) setQueue((prev) => [...prev, ...rest]);
+              handlePlayTrack(first);
+            }}
+            onQueueTracks={(tracks) => {
+              setQueue((prev) => [...prev, ...tracks]);
+              setPlaybackNotice(`Queued ${tracks.length} track${tracks.length === 1 ? '' : 's'}.`);
+            }}
           />
         )}
 
@@ -902,6 +915,15 @@ export const App: React.FC = () => {
         track={currentTrack}
         positionMs={progressMs}
       />
+
+      {/* Add track to a Soundscape playlist */}
+      {playlistTarget && (
+        <PlaylistPicker
+          track={playlistTarget}
+          onClose={() => setPlaylistTarget(null)}
+          onChanged={() => setPlaybackNotice('Playlist updated.')}
+        />
+      )}
 
       {/* Spotify Connect & Device Switcher Modal */}
       <DeviceConnectModal

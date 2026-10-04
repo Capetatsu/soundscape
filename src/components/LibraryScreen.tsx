@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { SpotifyPlaylist, SpotifyUser, SpotifyTrack } from '../types';
 import { db } from '../core/db/database';
 import { dbTrackToUi } from '../core/sync/toUi';
+import { listLocalPlaylists } from '../core/playlists/localPlaylists';
+import { LocalPlaylistScreen } from './LocalPlaylistScreen';
 
 interface LibraryScreenProps {
   playlists: SpotifyPlaylist[];
@@ -12,6 +14,8 @@ interface LibraryScreenProps {
   onCreatePlaylist?: () => void;
   onPlayLocalFiles?: (files: File[]) => void;
   onPlayTrack?: (track: SpotifyTrack) => void;
+  onPlayTracks?: (tracks: SpotifyTrack[]) => void;
+  onQueueTracks?: (tracks: SpotifyTrack[]) => void;
 }
 
 export const LibraryScreen: React.FC<LibraryScreenProps> = ({
@@ -21,13 +25,18 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
   onSelectPlaylist,
   onOpenSync,
   onPlayLocalFiles,
-  onPlayTrack
+  onPlayTrack,
+  onPlayTracks,
+  onQueueTracks
 }) => {
   const [activeFilter, setActiveFilter] = useState<'all' | 'playlists'>('all');
   const [isGridView, setIsGridView] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [localError, setLocalError] = useState<string | null>(null);
   const [localTracks, setLocalTracks] = useState<SpotifyTrack[]>([]);
+  const [myPlaylists, setMyPlaylists] = useState<{ uri: string; name: string; count: number }[]>([]);
+  const [selectedPlaylistUri, setSelectedPlaylistUri] = useState<string | null>(null);
+  const [playlistRefresh, setPlaylistRefresh] = useState(0);
 
   // Previously played device files (metadata only — blobs don't survive reload).
   useEffect(() => {
@@ -41,6 +50,32 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
       live = false;
     };
   }, []);
+
+  // Soundscape-native playlists.
+  useEffect(() => {
+    let live = true;
+    listLocalPlaylists()
+      .then((rows) => {
+        if (live) setMyPlaylists(rows);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [playlistRefresh]);
+
+  if (selectedPlaylistUri) {
+    return (
+      <LocalPlaylistScreen
+        uri={selectedPlaylistUri}
+        onBack={() => setSelectedPlaylistUri(null)}
+        onChanged={() => setPlaylistRefresh((n) => n + 1)}
+        onPlayTracks={onPlayTracks ?? (() => {})}
+        onQueueTracks={onQueueTracks ?? (() => {})}
+        onPlayTrack={onPlayTrack ?? (() => {})}
+      />
+    );
+  }
 
   const filterTabs = [
     { id: 'all', label: 'All' },
@@ -138,6 +173,31 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
         </label>
       </div>
       {localError && <p className="text-[11px] text-[#ffb4ab]">{localError}</p>}
+
+      {/* Soundscape playlists (local, no account needed) */}
+      {myPlaylists.length > 0 && (
+        <div>
+          <h2 className="text-sm font-bold text-[#e5e2e1] mb-2">Your playlists</h2>
+          <div className="space-y-1">
+            {myPlaylists.map((p) => (
+              <div
+                key={p.uri}
+                onClick={() => setSelectedPlaylistUri(p.uri)}
+                className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-[#201f1f] cursor-pointer group"
+              >
+                <div className="w-10 h-10 rounded-lg bg-[#53e076]/10 flex-shrink-0 flex items-center justify-center text-[#53e076]">
+                  <span className="material-symbols-outlined text-lg">playlist_play</span>
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-bold text-[#e5e2e1] truncate">{p.name}</p>
+                  <p className="text-[11px] text-[#c6c6c7]">{p.count} tracks · stored on this device</p>
+                </div>
+                <span className="material-symbols-outlined text-[#c6c6c7] group-hover:text-white">chevron_right</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Previously played device files: metadata persists, audio needs re-adding after reload */}
       {localTracks.length > 0 && (

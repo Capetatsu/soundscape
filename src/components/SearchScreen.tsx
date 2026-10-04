@@ -47,6 +47,7 @@ function audiusToUiTrack(t: AudiusTrack): SpotifyTrack {
 interface SearchScreenProps {
   onPlayTrack: (track: SpotifyTrack) => void;
   onAddToQueue?: (track: SpotifyTrack) => void;
+  onAddToPlaylist?: (track: SpotifyTrack) => void;
   onPlayArchiveRecording?: (rec: ArchiveRecording) => void;
   onSelectPlaylist: (playlist: SpotifyPlaylist) => void;
   onSelectAlbum: (albumId: string) => void;
@@ -59,6 +60,7 @@ interface SearchScreenProps {
 export const SearchScreen: React.FC<SearchScreenProps> = ({
   onPlayTrack,
   onAddToQueue,
+  onAddToPlaylist,
   onPlayArchiveRecording,
   onSelectPlaylist,
   onSelectAlbum,
@@ -466,6 +468,18 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({
                                   title="Add to queue"
                                 >
                                   <span className="material-symbols-outlined text-lg">playlist_add</span>
+                                </button>
+                              )}
+                              {onAddToPlaylist && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onAddToPlaylist(track);
+                                  }}
+                                  className="w-8 h-8 rounded-full flex items-center justify-center text-[#c6c6c7] hover:text-white hover:bg-white/5"
+                                  title="Add to a Soundscape playlist"
+                                >
+                                  <span className="material-symbols-outlined text-lg">library_add</span>
                                 </button>
                               )}
                             </div>
