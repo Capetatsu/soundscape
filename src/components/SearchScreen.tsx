@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { SpotifyTrack, SpotifyArtist, SpotifyAlbum, SpotifyPlaylist } from '../types';
 import { SpotifyApiClient } from '../services/spotifyApi';
 import { audiusSearchTracks, type AudiusTrack } from '../core/providers/audius/audiusClient';
@@ -83,6 +83,60 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({
   const [archiveRecs, setArchiveRecs] = useState<ArchiveRecording[]>([]);
   const [archiveFailed, setArchiveFailed] = useState(false);
   const [jamendoTracks, setJamendoTracks] = useState<{ track: SpotifyTrack; format: string }[]>([]);
+  const [hasMoreAudius, setHasMoreAudius] = useState(false);
+  const [hasMoreJamendo, setHasMoreJamendo] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  // Unified free-catalogue ranking: Jamendo (FLAC-capable) first, then Audius,
+  // exact title+artist duplicates merged to the higher-quality source.
+  const freeTracks = useMemo(() => {
+    const keyOf = (t: SpotifyTrack) => {
+      const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+      return `${norm(t.name)}|${norm(t.artists?.[0]?.name ?? '')}`;
+    };
+    const seen = new Set<string>();
+    const rows: { track: SpotifyTrack; source: string; format: string }[] = [];
+    for (const { track, format } of jamendoTracks) {
+      const k = keyOf(track);
+      if (seen.has(k)) continue;
+      seen.add(k);
+      rows.push({ track, source: 'Jamendo', format });
+    }
+    for (const track of audiusTracks) {
+      const k = keyOf(track);
+      if (seen.has(k)) continue;
+      seen.add(k);
+      rows.push({ track, source: 'Audius', format: 'MP3' });
+    }
+    return rows;
+  }, [jamendoTracks, audiusTracks]);
+
+  const loadMoreOpen = async () => {
+    if (loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const [moreA, moreJ] = await Promise.all([
+        hasMoreAudius ? audiusSearchTracks(query, 10, audiusTracks.length).catch(() => []) : [],
+        hasMoreJamendo && jamendoConfigured()
+          ? jamendoSearchTracks(query, 10, jamendoTracks.length).catch(() => [])
+          : []
+      ]);
+      if (moreA.length > 0) {
+        setAudiusTracks((prev) => [...prev, ...moreA.map(audiusToUiTrack)]);
+        setHasMoreAudius(moreA.length === 10);
+      } else {
+        setHasMoreAudius(false);
+      }
+      if (moreJ.length > 0) {
+        setJamendoTracks((prev) => [...prev, ...moreJ.map((t) => ({ track: jamendoToUiTrack(t), format: jamendoQualityLabel(t) }))]);
+        setHasMoreJamendo(moreJ.length === 10);
+      } else {
+        setHasMoreJamendo(false);
+      }
+    } finally {
+      setLoadingMore(false);
+    }
+  };
   const [searchResults, setSearchResults] = useState<{
     tracks: SpotifyTrack[];
     artists: SpotifyArtist[];
@@ -135,11 +189,13 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({
         const open = await audiusSearchTracks(query, 10);
         if (!cancelled) {
           setAudiusTracks(open.map(audiusToUiTrack));
+          setHasMoreAudius(open.length === 10);
           setAudiusFailed(false);
         }
       } catch {
         if (!cancelled) {
           setAudiusTracks([]);
+          setHasMoreAudius(false);
           setAudiusFailed(true);
         }
       }
@@ -162,12 +218,17 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({
           const jt = await jamendoSearchTracks(query, 10);
           if (!cancelled) {
             setJamendoTracks(jt.map((t) => ({ track: jamendoToUiTrack(t), format: jamendoQualityLabel(t) })));
+            setHasMoreJamendo(jt.length === 10);
           }
         } catch {
-          if (!cancelled) setJamendoTracks([]);
+          if (!cancelled) {
+            setJamendoTracks([]);
+            setHasMoreJamendo(false);
+          }
         }
       } else if (!cancelled) {
         setJamendoTracks([]);
+        setHasMoreJamendo(false);
       }
       if (isAuthenticated) {
         try {
@@ -339,61 +400,72 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({
             </div>
           ) : (
             <>
-              {/* Free catalogue (Audius): full-length, no login, playable in Soundscape */}
+              {/* Unified free catalogue: Jamendo first (FLAC-capable), then Audius. Full-length, no login. */}
               {(activeFilter === 'all' || activeFilter === 'songs') && (
                 <div>
                   <div className="flex items-center gap-2 mb-2.5">
                     <h2 className="text-base font-bold text-[#e5e2e1]">Free catalogue</h2>
                     <span className="px-2 py-0.5 rounded-full bg-[#53e076]/20 text-[#53e076] text-[9px] font-extrabold uppercase">
-                      Full tracks · Audius
+                      Full tracks{jamendoConfigured() ? ' · Jamendo + Audius' : ' · Audius'}
                     </span>
                   </div>
-                  {audiusFailed ? (
+                  {audiusFailed && freeTracks.length === 0 ? (
                     <p className="text-xs text-[#c6c6c7] py-3">
                       Free catalogue is unreachable right now. Spotify results (if connected) still work for discovery.
                     </p>
-                  ) : audiusTracks.length === 0 && !isSearching ? (
+                  ) : freeTracks.length === 0 && !isSearching ? (
                     <p className="text-xs text-[#c6c6c7] py-3">
                       No free-catalogue match for "{query}" — try different keywords, or browse device files in Your Library.
                     </p>
                   ) : (
-                    <div className="space-y-1">
-                      {audiusTracks.map((track) => (
-                        <div
-                          key={track.id}
-                          onClick={() => onPlayTrack(track)}
-                          className="flex items-center justify-between p-2.5 rounded-xl hover:bg-[#201f1f] cursor-pointer transition-colors group"
-                        >
-                          <div className="flex items-center gap-3 min-w-0 flex-1">
-                            <div className="w-10 h-10 rounded-lg overflow-hidden bg-[#131313] flex-shrink-0">
-                              <ArtworkImg
-                                src={track.album?.images?.[0]?.url}
-                                alt={track.name}
-                                className="w-full h-full object-cover"
-                              />
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <p className="text-sm font-bold text-[#e5e2e1] truncate group-hover:text-white">
-                                {track.name}
-                              </p>
-                              <p className="text-xs text-[#c6c6c7] truncate">
-                                {track.artists?.map((a) => a.name).join(', ')}
-                              </p>
-                            </div>
-                          </div>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onPlayTrack(track);
-                            }}
-                            className="w-8 h-8 rounded-full flex items-center justify-center text-[#53e076] hover:bg-[#53e076]/10"
-                            title="Play full track"
+                    <>
+                      <div className="space-y-1">
+                        {freeTracks.map(({ track, source, format }) => (
+                          <div
+                            key={track.id}
+                            onClick={() => onPlayTrack(track)}
+                            className="flex items-center justify-between p-2.5 rounded-xl hover:bg-[#201f1f] cursor-pointer transition-colors group"
                           >
-                            <span className="material-symbols-outlined text-xl">play_arrow</span>
-                          </button>
-                        </div>
-                      ))}
-                    </div>
+                            <div className="flex items-center gap-3 min-w-0 flex-1">
+                              <div className="w-10 h-10 rounded-lg overflow-hidden bg-[#131313] flex-shrink-0">
+                                <ArtworkImg
+                                  src={track.album?.images?.[0]?.url}
+                                  alt={track.name}
+                                  className="w-full h-full object-cover"
+                                />
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="text-sm font-bold text-[#e5e2e1] truncate group-hover:text-white">
+                                  {track.name}
+                                </p>
+                                <p className="text-xs text-[#c6c6c7] truncate">
+                                  {track.artists?.map((a) => a.name).join(', ')} · {source} · {format}
+                                </p>
+                              </div>
+                            </div>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onPlayTrack(track);
+                              }}
+                              className="w-8 h-8 rounded-full flex items-center justify-center text-[#53e076] hover:bg-[#53e076]/10"
+                              title={`Play full track (${source}, ${format})`}
+                            >
+                              <span className="material-symbols-outlined text-xl">play_arrow</span>
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                      {(hasMoreAudius || hasMoreJamendo) && (
+                        <button
+                          onClick={() => void loadMoreOpen()}
+                          disabled={loadingMore}
+                          className="mt-2 w-full py-2.5 rounded-xl bg-[#201f1f] hover:bg-[#2a2a2a] text-[#e5e2e1] text-xs font-bold disabled:opacity-50"
+                        >
+                          {loadingMore ? 'Loading…' : 'Show more free-catalogue results'}
+                        </button>
+                      )}
+                    </>
                   )}
                 </div>
               )}
@@ -449,55 +521,6 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({
                   <p className="text-[11px] text-[#c6c6c7] mt-1.5">
                     Audience recordings vary in quality — that's the nature of live tapes, shown honestly.
                   </p>
-                </div>
-              )}
-
-              {/* Jamendo (configured only — full tracks, FLAC where provided) */}
-              {(activeFilter === 'all' || activeFilter === 'songs') && jamendoTracks.length > 0 && (
-                <div>
-                  <div className="flex items-center gap-2 mb-2.5">
-                    <h2 className="text-base font-bold text-[#e5e2e1]">Jamendo</h2>
-                    <span className="px-2 py-0.5 rounded-full bg-[#53e076]/20 text-[#53e076] text-[9px] font-extrabold uppercase">
-                      Full tracks · FLAC first
-                    </span>
-                  </div>
-                  <div className="space-y-1">
-                    {jamendoTracks.map(({ track, format }) => (
-                      <div
-                        key={track.id}
-                        onClick={() => onPlayTrack(track)}
-                        className="flex items-center justify-between p-2.5 rounded-xl hover:bg-[#201f1f] cursor-pointer transition-colors group"
-                      >
-                        <div className="flex items-center gap-3 min-w-0 flex-1">
-                          <div className="w-10 h-10 rounded-lg overflow-hidden bg-[#131313] flex-shrink-0">
-                            <ArtworkImg
-                              src={track.album?.images?.[0]?.url}
-                              alt={track.name}
-                              className="w-full h-full object-cover"
-                            />
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm font-bold text-[#e5e2e1] truncate group-hover:text-white">
-                              {track.name}
-                            </p>
-                            <p className="text-xs text-[#c6c6c7] truncate">
-                              {track.artists?.map((a) => a.name).join(', ')} · {format}
-                            </p>
-                          </div>
-                        </div>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onPlayTrack(track);
-                          }}
-                          className="w-8 h-8 rounded-full flex items-center justify-center text-[#53e076] hover:bg-[#53e076]/10"
-                          title={`Play full track (${format})`}
-                        >
-                          <span className="material-symbols-outlined text-xl">play_arrow</span>
-                        </button>
-                      </div>
-                    ))}
-                  </div>
                 </div>
               )}
 

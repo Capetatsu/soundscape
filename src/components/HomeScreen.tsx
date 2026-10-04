@@ -7,6 +7,9 @@ import {
   jamendoQualityLabel,
   type JamendoTrack
 } from '../core/providers/jamendo/jamendoClient';
+import { recentPlays } from '../core/stats/listeningEvents';
+import { db } from '../core/db/database';
+import { dbTrackToUi } from '../core/sync/toUi';
 import { ArtworkImg } from './ArtworkImg';
 
 interface HomeScreenProps {
@@ -47,6 +50,24 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   const [trending, setTrending] = useState<SpotifyTrack[]>([]);
   const [trendingFailed, setTrendingFailed] = useState(false);
   const [jamendoTop, setJamendoTop] = useState<{ track: SpotifyTrack; format: string }[]>([]);
+  const [recentlyPlayed, setRecentlyPlayed] = useState<SpotifyTrack[]>([]);
+
+  // Recently played in Soundscape (real events only, any provider, no login needed).
+  useEffect(() => {
+    let isMounted = true;
+    recentPlays(10)
+      .then(async (plays) => {
+        if (!isMounted || plays.length === 0) return;
+        const uris = [...new Set(plays.map((p) => p.trackUri))].slice(0, 10);
+        const metas = await db.getTracksByUris(uris);
+        if (!isMounted) return;
+        if (metas.length > 0) setRecentlyPlayed(metas.map(dbTrackToUi));
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // Discovery shelf: Audius trending (free catalogue, no login).
   // Spotify browse/new-releases endpoints were removed under Dev Mode — not called.
@@ -443,6 +464,45 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                   <span className="absolute top-2 left-2 px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-black/70 text-[#53e076] uppercase">
                     {format}
                   </span>
+                  <div className="absolute bottom-2 right-2 w-10 h-10 rounded-full bg-[#53e076] text-[#003914] items-center justify-center shadow-xl hidden group-hover:flex">
+                    <span className="material-symbols-outlined text-xl fill-1">play_arrow</span>
+                  </div>
+                </div>
+                <p className="text-xs sm:text-sm font-bold text-[#e5e2e1] truncate group-hover:text-white">
+                  {track.name}
+                </p>
+                <p className="text-[11px] text-[#c6c6c7] truncate mt-0.5">
+                  {track.artists?.map((a) => a.name).join(', ')}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Recently played in Soundscape (real history, any provider) */}
+      {recentlyPlayed.length > 0 && (
+        <div className="px-4">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h2 className="text-lg font-bold text-[#e5e2e1] tracking-tight">Recently played</h2>
+              <p className="text-xs text-[#c6c6c7]">Your actual listening on this device</p>
+            </div>
+          </div>
+          <div className="flex gap-4 overflow-x-auto no-scrollbar pb-2">
+            {recentlyPlayed.map((track) => (
+              <div
+                key={track.uri}
+                onClick={() => onPlayTrack(track)}
+                className="group w-36 sm:w-44 flex-shrink-0 bg-[#201f1f]/60 hover:bg-[#201f1f] p-3 rounded-xl border border-white/5 cursor-pointer transition-all duration-200"
+              >
+                <div className="relative aspect-square w-full rounded-lg overflow-hidden mb-2.5 bg-[#131313] shadow-md">
+                  <ArtworkImg
+                    src={track.album?.images?.[0]?.url}
+                    alt={track.name}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    fallbackIcon="music_note"
+                  />
                   <div className="absolute bottom-2 right-2 w-10 h-10 rounded-full bg-[#53e076] text-[#003914] items-center justify-center shadow-xl hidden group-hover:flex">
                     <span className="material-symbols-outlined text-xl fill-1">play_arrow</span>
                   </div>
