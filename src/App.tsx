@@ -14,6 +14,7 @@ import { SpotifyApiClient } from './services/spotifyApi';
 import { AudioPlayerService } from './services/audioPlayer';
 import { audiusStreamUrl } from './core/providers/audius/audiusClient';
 import { archiveResolveTracks, archiveToRef, type ArchiveRecording } from './core/providers/archive/archiveClient';
+import { jamendoResolveTrack, jamendoQualityLabel } from './core/providers/jamendo/jamendoClient';
 import { SyncEngine, type SyncReport } from './core/sync/SyncEngine';
 import { db } from './core/db/database';
 import { dbPlaylistToUi, dbTrackToUi } from './core/sync/toUi';
@@ -426,6 +427,26 @@ export const App: React.FC = () => {
     }
     if (track.uri?.startsWith('archive:track:')) {
       void playArchiveTrack(track.uri);
+      return;
+    }
+    if (track.uri?.startsWith('jamendo:track:')) {
+      const jid = track.id.startsWith('jamendo-') ? track.id.slice('jamendo-'.length) : track.id;
+      setPlaybackNotice('Resolving best Jamendo file…');
+      jamendoResolveTrack(jid)
+        .then((jt) =>
+          audioService.playOpenTrack({
+            name: jt.name,
+            artist: jt.artistName,
+            imageUrl: jt.albumImage,
+            durationMs: jt.durationSec * 1000,
+            url: jt.audioUrl,
+            trackUri: track.uri,
+            trackId: track.id,
+            mode: 'jamendo',
+            notice: `Playing from Jamendo (${jamendoQualityLabel(jt)}).`
+          })
+        )
+        .catch((e) => setPlaybackNotice(e instanceof Error ? e.message : 'Jamendo track unavailable.'));
       return;
     }
     if (track.uri?.startsWith('local:')) {

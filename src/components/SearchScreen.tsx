@@ -3,7 +3,30 @@ import { SpotifyTrack, SpotifyArtist, SpotifyAlbum, SpotifyPlaylist } from '../t
 import { SpotifyApiClient } from '../services/spotifyApi';
 import { audiusSearchTracks, type AudiusTrack } from '../core/providers/audius/audiusClient';
 import { archiveSearchRecordings, type ArchiveRecording } from '../core/providers/archive/archiveClient';
+import {
+  jamendoSearchTracks,
+  jamendoConfigured,
+  jamendoQualityLabel,
+  type JamendoTrack
+} from '../core/providers/jamendo/jamendoClient';
 import { ArtworkImg } from './ArtworkImg';
+
+function jamendoToUiTrack(t: JamendoTrack): SpotifyTrack {
+  return {
+    id: `jamendo-${t.id}`,
+    uri: `jamendo:track:${t.id}`,
+    name: t.name,
+    artists: [{ name: t.artistName }],
+    album: {
+      name: t.albumName || 'Jamendo open catalogue',
+      images: t.albumImage ? [{ url: t.albumImage }] : []
+    },
+    duration_ms: t.durationSec * 1000,
+    preview_url: null,
+    explicit: false,
+    lyrics: t.lyrics ? [t.lyrics] : undefined
+  };
+}
 
 function audiusToUiTrack(t: AudiusTrack): SpotifyTrack {
   return {
@@ -59,6 +82,7 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({
   const [audiusFailed, setAudiusFailed] = useState(false);
   const [archiveRecs, setArchiveRecs] = useState<ArchiveRecording[]>([]);
   const [archiveFailed, setArchiveFailed] = useState(false);
+  const [jamendoTracks, setJamendoTracks] = useState<{ track: SpotifyTrack; format: string }[]>([]);
   const [searchResults, setSearchResults] = useState<{
     tracks: SpotifyTrack[];
     artists: SpotifyArtist[];
@@ -98,6 +122,7 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({
       setAudiusFailed(false);
       setArchiveRecs([]);
       setArchiveFailed(false);
+      setJamendoTracks([]);
       return;
     }
 
@@ -130,6 +155,19 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({
           setArchiveRecs([]);
           setArchiveFailed(true);
         }
+      }
+      // Jamendo: only when configured — otherwise the provider stays off, honestly.
+      if (jamendoConfigured()) {
+        try {
+          const jt = await jamendoSearchTracks(query, 10);
+          if (!cancelled) {
+            setJamendoTracks(jt.map((t) => ({ track: jamendoToUiTrack(t), format: jamendoQualityLabel(t) })));
+          }
+        } catch {
+          if (!cancelled) setJamendoTracks([]);
+        }
+      } else if (!cancelled) {
+        setJamendoTracks([]);
       }
       if (isAuthenticated) {
         try {
@@ -411,6 +449,55 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({
                   <p className="text-[11px] text-[#c6c6c7] mt-1.5">
                     Audience recordings vary in quality — that's the nature of live tapes, shown honestly.
                   </p>
+                </div>
+              )}
+
+              {/* Jamendo (configured only — full tracks, FLAC where provided) */}
+              {(activeFilter === 'all' || activeFilter === 'songs') && jamendoTracks.length > 0 && (
+                <div>
+                  <div className="flex items-center gap-2 mb-2.5">
+                    <h2 className="text-base font-bold text-[#e5e2e1]">Jamendo</h2>
+                    <span className="px-2 py-0.5 rounded-full bg-[#53e076]/20 text-[#53e076] text-[9px] font-extrabold uppercase">
+                      Full tracks · FLAC first
+                    </span>
+                  </div>
+                  <div className="space-y-1">
+                    {jamendoTracks.map(({ track, format }) => (
+                      <div
+                        key={track.id}
+                        onClick={() => onPlayTrack(track)}
+                        className="flex items-center justify-between p-2.5 rounded-xl hover:bg-[#201f1f] cursor-pointer transition-colors group"
+                      >
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                          <div className="w-10 h-10 rounded-lg overflow-hidden bg-[#131313] flex-shrink-0">
+                            <ArtworkImg
+                              src={track.album?.images?.[0]?.url}
+                              alt={track.name}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-bold text-[#e5e2e1] truncate group-hover:text-white">
+                              {track.name}
+                            </p>
+                            <p className="text-xs text-[#c6c6c7] truncate">
+                              {track.artists?.map((a) => a.name).join(', ')} · {format}
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onPlayTrack(track);
+                          }}
+                          className="w-8 h-8 rounded-full flex items-center justify-center text-[#53e076] hover:bg-[#53e076]/10"
+                          title={`Play full track (${format})`}
+                        >
+                          <span className="material-symbols-outlined text-xl">play_arrow</span>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
 

@@ -248,6 +248,118 @@ export const AudioSettingsScreen: React.FC<AudioSettingsScreenProps> = ({
 
       {/* Own music server (Subsonic/Navidrome/Jellyfin): real ping test, no fake library */}
       <SubsonicSection />
+
+      {/* Free catalogue: Jamendo (full tracks, FLAC where provided) */}
+      <JamendoSection />
+    </div>
+  );
+};
+
+const JamendoSection: React.FC = () => {
+  const [clientId, setClientId] = useState(() => {
+    try {
+      return localStorage.getItem('soundscape_jamendo_client_id') ?? '';
+    } catch {
+      return '';
+    }
+  });
+  const [quality, setQuality] = useState<'mp32' | 'flac'>(() => {
+    try {
+      return localStorage.getItem('soundscape_jamendo_quality') === 'flac' ? 'flac' : 'mp32';
+    } catch {
+      return 'mp32';
+    }
+  });
+  const [status, setStatus] = useState<'idle' | 'testing' | 'ok' | 'fail'>('idle');
+  const [detail, setDetail] = useState('');
+  const envKey = (
+    (import.meta as unknown as { env?: Record<string, string | undefined> }).env?.VITE_JAMENDO_CLIENT_ID
+  )?.trim();
+
+  const test = async () => {
+    const id = clientId.trim();
+    if (!id && !envKey) {
+      setStatus('fail');
+      setDetail('Enter a client ID from devportal.jamendo.com first (free read-only plan).');
+      return;
+    }
+    if (id) {
+      try {
+        localStorage.setItem('soundscape_jamendo_client_id', id);
+      } catch {}
+    }
+    setStatus('testing');
+    setDetail('');
+    try {
+      const { jamendoSearchTracks } = await import('../core/providers/jamendo/jamendoClient');
+      const res = await jamendoSearchTracks('rock', 1);
+      if (res.length === 0) throw new Error('No results — key may be invalid or quota exceeded');
+      setStatus('ok');
+      setDetail(`Connected. Sample: “${res[0].name}” by ${res[0].artistName}.`);
+    } catch (e) {
+      setStatus('fail');
+      setDetail(e instanceof Error ? e.message : 'Connection failed');
+    }
+  };
+
+  return (
+    <div className="bg-[#201f1f] border border-white/10 rounded-2xl p-5 shadow-xl space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-extrabold text-[#e5e2e1]">Jamendo free catalogue</h3>
+        <span className={`px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase ${envKey || clientId.trim() ? 'bg-[#53e076]/20 text-[#53e076]' : 'bg-[#353534] text-[#c6c6c7]'}`}>
+          {envKey || clientId.trim() ? 'Configured' : 'Not configured'}
+        </span>
+      </div>
+      <p className="text-[11px] text-[#c6c6c7] leading-relaxed">
+        Independent music, full-length streams, FLAC where artists provide it. Free client ID from{' '}
+        <span className="font-mono text-[#e5e2e1]">devportal.jamendo.com</span> (read-only plan).
+        Without a key this provider stays off — nothing is faked.
+      </p>
+      {!envKey && (
+        <input
+          type="text"
+          value={clientId}
+          onChange={(e) => setClientId(e.target.value)}
+          placeholder="Jamendo client ID"
+          autoComplete="off"
+          spellCheck={false}
+          className="w-full px-3 py-2 bg-[#131313] text-xs font-mono text-[#e5e2e1] rounded-lg border border-white/10 focus:border-[#53e076] focus:outline-none"
+        />
+      )}
+      {envKey && (
+        <p className="text-[11px] text-[#53e076]">Using the client ID from app configuration.</p>
+      )}
+      <div className="flex items-center gap-2">
+        <span className="text-[11px] font-bold text-[#c6c6c7]">Preferred quality:</span>
+        {(['mp32', 'flac'] as const).map((q) => (
+          <button
+            key={q}
+            onClick={() => {
+              setQuality(q);
+              try {
+                localStorage.setItem('soundscape_jamendo_quality', q);
+              } catch {}
+            }}
+            className={`px-3 py-1.5 rounded-full text-[11px] font-bold ${
+              quality === q ? 'bg-[#53e076] text-[#003914]' : 'bg-[#2a2a2a] text-[#e5e2e1]'
+            }`}
+          >
+            {q === 'mp32' ? 'MP3 VBR' : 'FLAC first'}
+          </button>
+        ))}
+      </div>
+      <p className="text-[11px] text-[#c6c6c7]">
+        “FLAC first” tries FLAC per track and falls back to MP3 VBR when the artist didn't provide it.
+      </p>
+      <button
+        onClick={test}
+        disabled={status === 'testing'}
+        className="w-full py-2.5 rounded-xl bg-[#2a2a2a] hover:bg-[#353534] text-[#e5e2e1] text-xs font-bold disabled:opacity-50"
+      >
+        {status === 'testing' ? 'Testing…' : 'Save & test connection'}
+      </button>
+      {status === 'ok' && <p className="text-[11px] text-[#53e076] font-semibold">{detail}</p>}
+      {status === 'fail' && <p className="text-[11px] text-[#ffb4ab]">Not connected: {detail}</p>}
     </div>
   );
 };

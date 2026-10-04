@@ -22,11 +22,19 @@ type View =
 
 export const LyricsModal: React.FC<LyricsModalProps> = ({ isOpen, onClose, track, positionMs }) => {
   const [view, setView] = useState<View>({ kind: 'loading' });
+  const [lyricSource, setLyricSource] = useState<string>('LRCLIB');
   const activeRef = useRef<HTMLParagraphElement | null>(null);
 
   useEffect(() => {
     if (!isOpen || !track) return;
     let cancelled = false;
+    // Provider-supplied lyrics first (e.g. Jamendo `include=lyrics`) — real text from the catalogue.
+    if (track.lyrics && track.lyrics.length > 0) {
+      setLyricSource(track.uri?.startsWith('jamendo:') ? 'Jamendo' : 'Provider');
+      setView({ kind: 'plain', text: track.lyrics.join('\n') });
+      return;
+    }
+    setLyricSource('LRCLIB');
     const key = `spotify:${track.id}`;
     const title = track.name;
     const artist = track.artists?.[0]?.name ?? '';
@@ -98,7 +106,7 @@ export const LyricsModal: React.FC<LyricsModalProps> = ({ isOpen, onClose, track
             <h2 className="text-base font-black text-[#e5e2e1]">Lyrics</h2>
             <p className="text-[11px] text-[#c6c6c7] truncate">
               {track ? `${track.name} • ${track.artists?.map((a) => a.name).join(', ')}` : 'No track'}
-              {'  '}· via LRCLIB
+              {'  '}· via {lyricSource}
             </p>
           </div>
           <button

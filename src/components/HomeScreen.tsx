@@ -1,6 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { SpotifyPlaylist, SpotifyTrack, SpotifyArtist, SpotifyUser } from '../types';
 import { audiusTrending, type AudiusTrack } from '../core/providers/audius/audiusClient';
+import {
+  jamendoChart,
+  jamendoConfigured,
+  jamendoQualityLabel,
+  type JamendoTrack
+} from '../core/providers/jamendo/jamendoClient';
 import { ArtworkImg } from './ArtworkImg';
 
 interface HomeScreenProps {
@@ -40,6 +46,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 }) => {
   const [trending, setTrending] = useState<SpotifyTrack[]>([]);
   const [trendingFailed, setTrendingFailed] = useState(false);
+  const [jamendoTop, setJamendoTop] = useState<{ track: SpotifyTrack; format: string }[]>([]);
 
   // Discovery shelf: Audius trending (free catalogue, no login).
   // Spotify browse/new-releases endpoints were removed under Dev Mode — not called.
@@ -68,6 +75,35 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         console.warn('Could not fetch Audius trending:', err);
         if (isMounted) setTrendingFailed(true);
       });
+    // Jamendo chart: only when configured — otherwise the provider stays off.
+    if (jamendoConfigured()) {
+      jamendoChart('electronic', 8)
+        .then((items: JamendoTrack[]) => {
+          if (!isMounted) return;
+          setJamendoTop(
+            items.map((t) => ({
+              format: jamendoQualityLabel(t),
+              track: {
+                id: `jamendo-${t.id}`,
+                uri: `jamendo:track:${t.id}`,
+                name: t.name,
+                artists: [{ name: t.artistName }],
+                album: {
+                  name: t.albumName || 'Jamendo open catalogue',
+                  images: t.albumImage ? [{ url: t.albumImage }] : []
+                },
+                duration_ms: t.durationSec * 1000,
+                preview_url: null,
+                explicit: false,
+                lyrics: t.lyrics ? [t.lyrics] : undefined
+              }
+            }))
+          );
+        })
+        .catch((err) => {
+          console.warn('Could not fetch Jamendo chart:', err);
+        });
+    }
 
     return () => {
       isMounted = false;
@@ -378,6 +414,48 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           <p className="text-xs text-[#c6c6c7]">
             Trending shelf is unreachable right now — search still works for the free catalogue.
           </p>
+        </div>
+      )}
+
+      {/* Top on Jamendo (configured only): monthly popular, FLAC where provided */}
+      {jamendoTop.length > 0 && (
+        <div className="px-4">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h2 className="text-lg font-bold text-[#e5e2e1] tracking-tight">Top on Jamendo</h2>
+              <p className="text-xs text-[#c6c6c7]">Monthly popular independent tracks · full-length</p>
+            </div>
+          </div>
+          <div className="flex gap-4 overflow-x-auto no-scrollbar pb-2">
+            {jamendoTop.map(({ track, format }) => (
+              <div
+                key={track.id}
+                onClick={() => onPlayTrack(track)}
+                className="group w-36 sm:w-44 flex-shrink-0 bg-[#201f1f]/60 hover:bg-[#201f1f] p-3 rounded-xl border border-white/5 cursor-pointer transition-all duration-200"
+              >
+                <div className="relative aspect-square w-full rounded-lg overflow-hidden mb-2.5 bg-[#131313] shadow-md">
+                  <ArtworkImg
+                    src={track.album?.images?.[0]?.url}
+                    alt={track.name}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    fallbackIcon="music_note"
+                  />
+                  <span className="absolute top-2 left-2 px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-black/70 text-[#53e076] uppercase">
+                    {format}
+                  </span>
+                  <div className="absolute bottom-2 right-2 w-10 h-10 rounded-full bg-[#53e076] text-[#003914] items-center justify-center shadow-xl hidden group-hover:flex">
+                    <span className="material-symbols-outlined text-xl fill-1">play_arrow</span>
+                  </div>
+                </div>
+                <p className="text-xs sm:text-sm font-bold text-[#e5e2e1] truncate group-hover:text-white">
+                  {track.name}
+                </p>
+                <p className="text-[11px] text-[#c6c6c7] truncate mt-0.5">
+                  {track.artists?.map((a) => a.name).join(', ')}
+                </p>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
