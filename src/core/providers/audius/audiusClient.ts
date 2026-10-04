@@ -56,10 +56,11 @@ export function audiusStreamUrl(trackId: string): string {
   return `${GATEWAY}/tracks/${encodeURIComponent(trackId)}/stream?app_name=${APP_NAME}`;
 }
 
-export async function audiusSearchTracks(query: string, limit = 10): Promise<AudiusTrack[]> {
+export async function audiusSearchTracks(query: string, limit = 10, offset = 0): Promise<AudiusTrack[]> {
   const data = await get<{ data?: RawTrack[] }>('/tracks/search', {
     query: query.slice(0, 100),
-    limit: String(Math.min(25, Math.max(1, limit)))
+    limit: String(Math.min(25, Math.max(1, limit))),
+    offset: String(Math.max(0, offset))
   });
   return (data.data ?? []).map(mapTrack).filter((t): t is AudiusTrack => !!t);
 }

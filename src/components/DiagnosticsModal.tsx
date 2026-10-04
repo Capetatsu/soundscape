@@ -3,6 +3,7 @@ import { FeatureReportItem, SpotifyDevice, SpotifyTrack, SpotifyUser } from '../
 import { AudioPlayerService, PlaybackDiagnostics } from '../services/audioPlayer';
 import { SpotifyAuthService } from '../services/spotifyAuth';
 import { SpotifyApiClient } from '../services/spotifyApi';
+import { describeProviders, jamendoEffectiveCaps } from '../core/providers/registry';
 
 interface DiagnosticsModalProps {
   isOpen: boolean;
@@ -35,6 +36,11 @@ export const DiagnosticsModal: React.FC<DiagnosticsModalProps> = ({
   const [testStage, setTestStage] = useState<number>(0);
   const [isRunningTest, setIsRunningTest] = useState<boolean>(false);
   const [testResults, setTestResults] = useState<{ name: string; status: 'pass' | 'fail' | 'warning'; message: string }[]>([]);
+  const [serverConfig, setServerConfig] = useState<{
+    hasGeminiKey: boolean;
+    hasEnvClientId: boolean;
+    bffAuth: boolean;
+  } | null>(null);
 
   // Update diagnostic metrics on open and every 1 second while open
   useEffect(() => {
@@ -47,6 +53,12 @@ export const DiagnosticsModal: React.FC<DiagnosticsModalProps> = ({
 
     updateDiag();
     const interval = setInterval(updateDiag, 1000);
+    fetch('/api/config')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((c) => {
+        if (c) setServerConfig({ hasGeminiKey: !!c.hasGeminiKey, hasEnvClientId: !!c.hasEnvClientId, bffAuth: !!c.bffAuth });
+      })
+      .catch(() => {});
     return () => clearInterval(interval);
   }, [isOpen]);
 
@@ -718,6 +730,34 @@ export const DiagnosticsModal: React.FC<DiagnosticsModalProps> = ({
                 : diag.playbackMode === 'local'
                 ? 'Local file (this device)'
                 : 'Idle'}
+            </p>
+          </div>
+
+          {/* 12. Provider capability matrix (P2 — explicit caps, no pretending) */}          <div className="p-3 bg-[#131313] border border-white/5 rounded-xl space-y-2 col-span-1 sm:col-span-2">
+            <span className="text-[11px] font-bold text-[#c6c6c7]">Provider capabilities</span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+              {describeProviders().map((p) => {
+                const caps = p.id === 'jamendo' ? jamendoEffectiveCaps() : p.caps;
+                const off = p.id === 'jamendo' && caps.length === 0;
+                return (
+                  <div key={p.id} className="p-2 rounded-lg bg-[#1c1b1b] border border-white/5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-[#e5e2e1] font-mono">{p.id}</span>
+                      <span className={`text-[9px] font-extrabold uppercase ${off ? 'text-amber-400' : 'text-[#53e076]'}`}>
+                        {off ? 'off — needs key' : p.detail || 'ready'}
+                      </span>
+                    </div>
+                    <p className="text-[10px] font-mono text-[#c6c6c7] mt-0.5">
+                      {caps.length > 0 ? caps.join(' · ') : 'no capabilities while unconfigured'}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+            <p className="text-[10px] font-mono text-[#c6c6c7]">
+              server: BFF auth {serverConfig ? (serverConfig.bffAuth ? 'on' : 'off') : '…'}
+              {' · '}Spotify client ID {serverConfig ? (serverConfig.hasEnvClientId ? 'set' : 'missing') : '…'}
+              {' · '}AI key {serverConfig ? (serverConfig.hasGeminiKey ? 'set' : 'missing (AI unavailable)') : '…'}
             </p>
           </div>
 

@@ -102,12 +102,13 @@ async function call(path: string, params: Record<string, string>): Promise<{ res
 }
 
 /** Search tracks. One request, MP3 VBR (universal). FLAC upgrade happens at play time. */
-export async function jamendoSearchTracks(query: string, limit = 10): Promise<JamendoTrack[]> {
+export async function jamendoSearchTracks(query: string, limit = 10, offset = 0): Promise<JamendoTrack[]> {
   const data = await call('/tracks/', {
     search: query.slice(0, 100),
     include: 'musicinfo+licenses',
     audioformat: 'mp32',
-    limit: String(Math.min(20, Math.max(1, limit)))
+    limit: String(Math.min(20, Math.max(1, limit))),
+    offset: String(Math.max(0, offset))
   });
   return (data.results ?? []).map((r) => mapTrack(r, 'mp32')).filter((t): t is JamendoTrack => !!t);
 }
