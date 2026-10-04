@@ -86,20 +86,48 @@ export class SpotifyApiClient {
   static async checkSavedTracks(trackIds: string[]): Promise<boolean[]> {
     if (!trackIds.length) return [];
     const ids = trackIds.slice(0, 50).join(',');
-    const res = await this.fetchWithAuth(`/me/tracks/contains?ids=${ids}`);
+    // Current API first, legacy fallback (Dev Mode migration).
+    let res = await this.fetchWithAuth(`/me/library/contains?ids=${ids}`);
+    if (res.status === 404) {
+      res = await this.fetchWithAuth(`/me/tracks/contains?ids=${ids}`);
+    }
     if (!res.ok) return trackIds.map(() => false);
     return res.json();
   }
 
   static async saveTrack(trackId: string): Promise<boolean> {
-    const res = await this.fetchWithAuth(`/me/tracks?ids=${trackId}`, {
+    let res = await this.fetchWithAuth(`/me/library?ids=${trackId}`, {
+      method: 'PUT'
+    });
+    if (res.status === 404) {
+      res = await this.fetchWithAuth(`/me/tracks?ids=${trackId}`, {
+        method: 'PUT'
+      });
+    }
+    return res.ok;
+  }
+
+  static async removeSavedTrack(trackId: string): Promise<boolean> {
+    let res = await this.fetchWithAuth(`/me/library?ids=${trackId}`, {
+      method: 'DELETE'
+    });
+    if (res.status === 404) {
+      res = await this.fetchWithAuth(`/me/tracks?ids=${trackId}`, {
+        method: 'DELETE'
+      });
+    }
+    return res.ok;
+  }
+
+  static async followPlaylist(playlistId: string): Promise<boolean> {
+    const res = await this.fetchWithAuth(`/playlists/${playlistId}/followers`, {
       method: 'PUT'
     });
     return res.ok;
   }
 
-  static async removeSavedTrack(trackId: string): Promise<boolean> {
-    const res = await this.fetchWithAuth(`/me/tracks?ids=${trackId}`, {
+  static async unfollowPlaylist(playlistId: string): Promise<boolean> {
+    const res = await this.fetchWithAuth(`/playlists/${playlistId}/followers`, {
       method: 'DELETE'
     });
     return res.ok;
