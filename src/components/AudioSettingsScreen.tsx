@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { AudioSettings } from '../types';
 import { AudioPlayerService } from '../services/audioPlayer';
+import { SubsonicBrowser, type SubsonicPlayTarget } from './SubsonicBrowser';
 
 interface AudioSettingsScreenProps {
   settings: AudioSettings;
   onUpdateSettings: (newSettings: Partial<AudioSettings>) => void;
+  onPlaySubsonic: (target: SubsonicPlayTarget) => void;
 }
 
 function formatBytes(n: number): string {
@@ -21,7 +23,8 @@ function formatBytes(n: number): string {
 
 export const AudioSettingsScreen: React.FC<AudioSettingsScreenProps> = ({
   settings,
-  onUpdateSettings
+  onUpdateSettings,
+  onPlaySubsonic
 }) => {
   const [storage, setStorage] = useState<{ usage: number; quota: number } | null>(null);
 
@@ -246,8 +249,8 @@ export const AudioSettingsScreen: React.FC<AudioSettingsScreenProps> = ({
         </div>
       </div>
 
-      {/* Own music server (Subsonic/Navidrome/Jellyfin): real ping test, no fake library */}
-      <SubsonicSection />
+      {/* Own music server (Subsonic/Navidrome/Jellyfin): real connect + search + play */}
+      <SubsonicBrowser onPlay={onPlaySubsonic} />
 
       {/* Free catalogue: Jamendo (full tracks, FLAC where provided) */}
       <JamendoSection />
@@ -422,92 +425,6 @@ const LocalDspControls: React.FC = () => {
           />
         </button>
       </div>
-    </div>
-  );
-};
-
-const SubsonicSection: React.FC = () => {
-  const [server, setServer] = useState(() => sessionStorage.getItem('soundscape_subsonic_server') ?? '');
-  const [user, setUser] = useState(() => sessionStorage.getItem('soundscape_subsonic_user') ?? '');
-  const [pass, setPass] = useState(() => sessionStorage.getItem('soundscape_subsonic_pass') ?? '');
-  const [status, setStatus] = useState<'idle' | 'testing' | 'ok' | 'fail'>('idle');
-  const [detail, setDetail] = useState('');
-
-  const test = async () => {
-    const base = server.trim().replace(/\/+$/, '');
-    if (!base || !user) {
-      setStatus('fail');
-      setDetail('Enter the server URL and username first.');
-      return;
-    }
-    setStatus('testing');
-    setDetail('');
-    try {
-      const q = new URLSearchParams({
-        u: user, p: pass, v: '1.16.1', c: 'Soundscape', f: 'json'
-      });
-      const res = await fetch(`${base}/rest/ping.view?${q.toString()}`, {
-        signal: AbortSignal.timeout(10000)
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json() as { 'subsonic-response'?: { status?: string; error?: { message?: string } } };
-      const sr = data['subsonic-response'];
-      if (sr?.status === 'ok') {
-        sessionStorage.setItem('soundscape_subsonic_server', base);
-        sessionStorage.setItem('soundscape_subsonic_user', user);
-        sessionStorage.setItem('soundscape_subsonic_pass', pass);
-        setStatus('ok');
-        setDetail('Server reachable and credentials accepted. Library browsing and streaming from your server is planned — nothing is synced yet.');
-      } else {
-        throw new Error(sr?.error?.message || 'Server rejected the request');
-      }
-    } catch (e) {
-      setStatus('fail');
-      setDetail(e instanceof Error ? e.message : 'Connection failed');
-    }
-  };
-
-  return (
-    <div className="bg-[#201f1f] border border-white/10 rounded-2xl p-5 shadow-xl space-y-3">
-      <h3 className="text-sm font-extrabold text-[#e5e2e1]">Your own music server</h3>
-      <p className="text-[11px] text-[#c6c6c7] leading-relaxed">
-        Optional Subsonic-compatible server (Navidrome, Jellyfin, Gonic). Credentials stay in this
-        tab's session storage and are only sent to your server for the connection test.
-      </p>
-      <input
-        type="url"
-        value={server}
-        onChange={(e) => setServer(e.target.value)}
-        placeholder="https://music.example.com"
-        className="w-full px-3 py-2 bg-[#131313] text-xs font-mono text-[#e5e2e1] rounded-lg border border-white/10 focus:border-[#53e076] focus:outline-none"
-      />
-      <div className="flex gap-2">
-        <input
-          type="text"
-          value={user}
-          onChange={(e) => setUser(e.target.value)}
-          placeholder="Username"
-          autoComplete="username"
-          className="flex-1 px-3 py-2 bg-[#131313] text-xs text-[#e5e2e1] rounded-lg border border-white/10 focus:border-[#53e076] focus:outline-none"
-        />
-        <input
-          type="password"
-          value={pass}
-          onChange={(e) => setPass(e.target.value)}
-          placeholder="Password"
-          autoComplete="current-password"
-          className="flex-1 px-3 py-2 bg-[#131313] text-xs text-[#e5e2e1] rounded-lg border border-white/10 focus:border-[#53e076] focus:outline-none"
-        />
-      </div>
-      <button
-        onClick={test}
-        disabled={status === 'testing'}
-        className="w-full py-2.5 rounded-xl bg-[#2a2a2a] hover:bg-[#353534] text-[#e5e2e1] text-xs font-bold disabled:opacity-50"
-      >
-        {status === 'testing' ? 'Testing…' : 'Test connection'}
-      </button>
-      {status === 'ok' && <p className="text-[11px] text-[#53e076] font-semibold">Connected: {detail}</p>}
-      {status === 'fail' && <p className="text-[11px] text-[#ffb4ab]">Not connected: {detail}</p>}
     </div>
   );
 };

@@ -27,6 +27,10 @@ export class SubsonicProvider extends BaseProvider {
   readonly caps: ReadonlySet<Capability> = new Set<Capability>([
     'auth', 'library', 'search', 'metadata', 'lyrics', 'playback', 'devices', 'download', 'write'
   ]);
+  override status() {
+    // Configured per session; the UI reports live connection state.
+    return { connected: true, detail: 'Navidrome/Jellyfin/Gonic (session config)' };
+  }
 }
 
 export class LrclibProvider extends BaseProvider {

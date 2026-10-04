@@ -820,6 +820,19 @@ export const App: React.FC = () => {
             onUpdateSettings={(newSettings) =>
               setAudioSettings((prev) => ({ ...prev, ...newSettings }))
             }
+            onPlaySubsonic={(target) =>
+              void audioService.playOpenTrack({
+                name: target.track.title,
+                artist: target.track.artist,
+                imageUrl: target.imageUrl,
+                durationMs: target.track.durationSec * 1000,
+                url: target.streamUrl,
+                trackUri: `subsonic:track:${target.track.id}`,
+                trackId: `subsonic-${target.track.id}`,
+                mode: 'local',
+                notice: `Streaming from your server · ${target.track.artist}`
+              })
+            }
           />
         )}
       </main>
