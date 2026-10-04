@@ -24,6 +24,7 @@ interface FullPlayerModalProps {
   onToggleLike: (track: SpotifyTrack) => void;
   onOpenDeviceModal: () => void;
   onOpenQueue: () => void;
+  onOpenLyrics?: () => void;
   onSelectAlbum?: (albumId: string) => void;
   onSelectArtist?: (artistId: string) => void;
 }
@@ -51,10 +52,10 @@ export const FullPlayerModal: React.FC<FullPlayerModalProps> = ({
   onToggleLike,
   onOpenDeviceModal,
   onOpenQueue,
+  onOpenLyrics,
   onSelectAlbum,
   onSelectArtist
 }) => {
-  const [showFullLyrics, setShowFullLyrics] = useState(false);
   const [isScrubbing, setIsScrubbing] = useState(false);
   const [scrubValue, setScrubValue] = useState(0);
   const [copiedLink, setCopiedLink] = useState(false);
@@ -74,21 +75,6 @@ export const FullPlayerModal: React.FC<FullPlayerModalProps> = ({
   const currentPosition = isScrubbing ? scrubValue : progressMs;
   const remainingMs = Math.max(0, durationMs - currentPosition);
   const progressPercent = durationMs > 0 ? (currentPosition / durationMs) * 100 : 0;
-
-  const lyricsList = currentTrack.lyrics || [
-    "Now he's thinkin' 'bout me every night, oh",
-    "Is it that sweet? I guess so",
-    "Say you can't sleep, baby, I know",
-    "That's that me espresso",
-    "Move it up, down, left, right, oh",
-    "Switch it up like Nintendo"
-  ];
-
-  // Calculate active lyric index based on progress
-  const activeLyricIndex = Math.min(
-    lyricsList.length - 1,
-    Math.floor((currentPosition / (durationMs || 1)) * lyricsList.length)
-  );
 
   return (
     <div className="fixed inset-0 z-50 bg-[#131313] text-[#e5e2e1] overflow-y-auto flex flex-col justify-between animate-in fade-in slide-in-from-bottom duration-300">
@@ -160,12 +146,20 @@ export const FullPlayerModal: React.FC<FullPlayerModalProps> = ({
           )}
           {isPlaying && (
             <div className="absolute top-3 right-3 px-2 py-1 rounded-full bg-black/70 backdrop-blur-md flex items-center gap-1.5 border border-white/10">
-              <span className={`w-2 h-2 rounded-full ${playbackMode === 'preview' ? 'bg-amber-400' : 'bg-[#53e076]'} animate-pulse`} />
-              <span className={`text-[10px] font-bold tracking-wider uppercase ${playbackMode === 'preview' ? 'text-amber-300' : 'text-[#53e076]'}`}>
-                {playbackMode === 'preview'
-                  ? '30s Preview'
-                  : playbackMode === 'connect'
+              <span className="w-2 h-2 rounded-full bg-[#53e076] animate-pulse" />
+              <span className="text-[10px] font-bold tracking-wider uppercase text-[#53e076]">
+                {playbackMode === 'connect'
                   ? 'Spotify Connect'
+                  : playbackMode === 'local'
+                  ? 'Local File'
+                  : playbackMode === 'audius'
+                  ? 'Audius'
+                  : playbackMode === 'jamendo'
+                  ? 'Jamendo'
+                  : playbackMode === 'archive'
+                  ? 'Archive'
+                  : playbackMode === 'radio'
+                  ? 'Live Radio'
                   : 'Spotify 320k'}
               </span>
             </div>
@@ -391,14 +385,15 @@ export const FullPlayerModal: React.FC<FullPlayerModalProps> = ({
           </div>
         </div>
 
-        {/* Live Synced Lyrics Teaser Card */}
-        <div
+        {/* Real lyrics entry (LRCLIB via LyricsModal — never fabricated) */}
+        <button
           id="fullplayer-lyrics-card"
-          onClick={() => setShowFullLyrics(!showFullLyrics)}
-          className="w-full mt-6 bg-[#201f1f] hover:bg-[#2a2a2a] border border-white/10 rounded-2xl p-4 cursor-pointer transition-all shadow-lg relative overflow-hidden group"
+          onClick={() => onOpenLyrics?.()}
+          className="w-full mt-6 bg-[#201f1f] hover:bg-[#2a2a2a] border border-white/10 rounded-2xl p-4 cursor-pointer transition-all shadow-lg relative overflow-hidden group text-left"
         >
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-[#53e076] text-lg">lyrics</span>
               <span className="text-xs font-bold uppercase tracking-wider text-[#53e076]">Lyrics</span>
               {isPlaying && (
                 <div className="flex items-center gap-0.5">
@@ -409,31 +404,14 @@ export const FullPlayerModal: React.FC<FullPlayerModalProps> = ({
               )}
             </div>
             <span className="text-[11px] font-semibold text-[#c6c6c7] group-hover:text-white flex items-center gap-1">
-              {showFullLyrics ? 'Collapse' : 'Full view'}
-              <span className="material-symbols-outlined text-sm">
-                {showFullLyrics ? 'unfold_less' : 'unfold_more'}
-              </span>
+              View
+              <span className="material-symbols-outlined text-sm">open_in_new</span>
             </span>
           </div>
-
-          <div className="space-y-2 mt-2">
-            {lyricsList.slice(0, showFullLyrics ? lyricsList.length : 3).map((line, idx) => {
-              const isCurrent = idx === activeLyricIndex;
-              return (
-                <p
-                  key={idx}
-                  className={`text-sm sm:text-base font-bold transition-all duration-300 leading-snug ${
-                    isCurrent
-                      ? 'text-[#53e076] scale-[1.02] origin-left'
-                      : 'text-[#c6c6c7]/60'
-                  }`}
-                >
-                  {line}
-                </p>
-              );
-            })}
-          </div>
-        </div>
+          <p className="text-[11px] text-[#c6c6c7] mt-1.5">
+            Synced lyrics from LRCLIB when available. Nothing is shown if the service has no match.
+          </p>
+        </button>
       </div>
     </div>
   );

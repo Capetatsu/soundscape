@@ -22,7 +22,8 @@ export const DeviceConnectModal: React.FC<DeviceConnectModalProps> = ({
   onSelectDevice,
   onVolumeChange
 }) => {
-  const [inJam, setInJam] = useState(false);
+  // Listen Together / Jam is phase-gated (P11). No fake session state:
+  // the button below is an honest coming-soon placeholder, not a session toggle.
   const [showScanTip, setShowScanTip] = useState(false);
 
   if (!isOpen) return null;
@@ -116,33 +117,34 @@ export const DeviceConnectModal: React.FC<DeviceConnectModalProps> = ({
           </div>
         </div>
 
-        {/* Start a Jam Card (Stitch Screen 8) */}
-        <div className="p-4 bg-[#1c1b1b] border border-white/10 rounded-2xl space-y-3">
+        {/* Listen Together (coming soon — phase-gated, no fake session) */}
+        <div className="p-4 bg-[#1c1b1b] border border-white/10 rounded-2xl space-y-3 opacity-80">
           <div className="flex items-center gap-2 text-sm font-bold text-[#e5e2e1]">
             <span className="material-symbols-outlined text-[#53e076]">groups</span>
-            <span>Start a Jam</span>
+            <span>Listen Together</span>
+            <span className="px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-[#353534] text-[#c6c6c7] uppercase">
+              Coming soon
+            </span>
           </div>
           <p className="text-xs text-[#c6c6c7] leading-relaxed">
-            Listen together with friends nearby or across the world with synchronized playback.
+            Synchronized group listening is on the roadmap (P11) and is not available yet.
+            Use the Spotify app's built-in Jam feature in the meantime.
           </p>
           <div className="flex items-center gap-2 pt-1">
             <button
-              onClick={() => setInJam(!inJam)}
-              className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all shadow-md ${
-                inJam
-                  ? 'bg-[#2a2a2a] text-[#53e076] border border-[#53e076]'
-                  : 'bg-[#53e076] hover:bg-[#1db954] text-[#003914]'
-              }`}
+              disabled
+              title="Listen Together is not implemented yet"
+              className="flex-1 py-2 rounded-xl text-xs font-bold bg-[#2a2a2a] text-[#c6c6c7] cursor-not-allowed"
             >
-              {inJam ? 'Jam Session Active (3 Listeners)' : 'Start Jam'}
+              Start a shared session (unavailable)
             </button>
             <button
               onClick={() => setShowScanTip(!showScanTip)}
               className="px-3 py-2 rounded-xl bg-[#2a2a2a] hover:bg-[#353534] text-xs font-bold text-[#e5e2e1] flex items-center gap-1"
-              title="Scan QR Code"
+              title="How to use Spotify Jam instead"
             >
               <span className="material-symbols-outlined text-base">qr_code_scanner</span>
-              <span>Scan Code</span>
+              <span>Spotify Jam</span>
             </button>
           </div>
           {showScanTip && (

@@ -8,6 +8,7 @@ interface LibraryScreenProps {
   onSelectPlaylist: (playlist: SpotifyPlaylist) => void;
   onOpenSync: () => void;
   onCreatePlaylist?: () => void;
+  onPlayLocalFiles?: (files: File[]) => void;
 }
 
 export const LibraryScreen: React.FC<LibraryScreenProps> = ({
@@ -15,11 +16,13 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
   likedSongsCount,
   user,
   onSelectPlaylist,
-  onOpenSync
+  onOpenSync,
+  onPlayLocalFiles
 }) => {
   const [activeFilter, setActiveFilter] = useState<'all' | 'playlists'>('all');
   const [isGridView, setIsGridView] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [localError, setLocalError] = useState<string | null>(null);
 
   const filterTabs = [
     { id: 'all', label: 'All' },
@@ -84,6 +87,39 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
           </button>
         ))}
       </div>
+
+      {/* Local files: your own audio, played on-device (FLAC/MP3/AAC/WAV/OGG) */}
+      <div className="p-3.5 rounded-2xl bg-[#201f1f] border border-white/10 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <span className="material-symbols-outlined text-[#53e076] text-xl">folder_open</span>
+          <div className="min-w-0">
+            <p className="text-xs font-bold text-[#e5e2e1]">Play files from this device</p>
+            <p className="text-[11px] text-[#c6c6c7] truncate">Your own FLAC, MP3, AAC, WAV or OGG files</p>
+          </div>
+        </div>
+        <label className="px-3 py-2 rounded-xl bg-[#2a2a2a] hover:bg-[#353534] text-[#e5e2e1] text-[11px] font-bold cursor-pointer flex-shrink-0">
+          Choose files
+          <input
+            type="file"
+            accept="audio/*,.flac,.mp3,.m4a,.aac,.wav,.ogg,.opus"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              const files = Array.from(e.target.files ?? []);
+              e.target.value = '';
+              if (files.length === 0) return;
+              const bad = files.find((f) => !f.type.startsWith('audio/') && !/\.(flac|mp3|m4a|aac|wav|ogg|opus)$/i.test(f.name));
+              if (bad) {
+                setLocalError(`"${bad.name}" is not a supported audio file.`);
+                return;
+              }
+              setLocalError(null);
+              onPlayLocalFiles?.(files);
+            }}
+          />
+        </label>
+      </div>
+      {localError && <p className="text-[11px] text-[#ffb4ab]">{localError}</p>}
 
       {/* Sorting & Layout View Bar */}
       <div className="flex items-center justify-between text-xs font-semibold text-[#c6c6c7] pt-1">

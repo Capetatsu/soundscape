@@ -1,28 +1,54 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AudioSettings } from '../types';
+import { AudioPlayerService } from '../services/audioPlayer';
 
 interface AudioSettingsScreenProps {
   settings: AudioSettings;
   onUpdateSettings: (newSettings: Partial<AudioSettings>) => void;
 }
 
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  const units = ['KB', 'MB', 'GB'];
+  let v = n / 1024;
+  let u = 0;
+  while (v >= 1024 && u < units.length - 1) {
+    v /= 1024;
+    u += 1;
+  }
+  return `${v.toFixed(1)} ${units[u]}`;
+}
+
 export const AudioSettingsScreen: React.FC<AudioSettingsScreenProps> = ({
   settings,
   onUpdateSettings
 }) => {
-  const [activeTab, setActiveTab] = useState<'streaming' | 'downloads' | 'hardware'>('streaming');
+  const [storage, setStorage] = useState<{ usage: number; quota: number } | null>(null);
+
+  // Real storage figures from the browser — never fabricated.
+  useEffect(() => {
+    let cancelled = false;
+    if (navigator.storage?.estimate) {
+      navigator.storage.estimate().then((e) => {
+        if (!cancelled) setStorage({ usage: e.usage ?? 0, quota: e.quota ?? 0 });
+      }).catch(() => {});
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const streamingOptions: { id: AudioSettings['streamingQuality']; label: string; desc: string; badge?: string }[] = [
     { id: 'very_high', label: 'Very High (320 kbps) — Official Spotify Max', desc: 'Highest official bitrate stream delivered by Spotify Web Playback SDK for Premium accounts', badge: 'RECOMMENDED' },
     { id: 'auto', label: 'Automatic', desc: 'Dynamically adapts between 96kbps - 320kbps based on network latency' },
     { id: 'high', label: 'High (160 kbps)', desc: 'Balanced sound quality for mobile networks' },
     { id: 'normal', label: 'Normal (96 kbps)', desc: 'Data-efficient standard playback' },
-    { id: 'lossless', label: 'Lossless FLAC Hi-Res', desc: 'NOT AVAILABLE THROUGH CURRENT OFFICIAL INTEGRATION. Spotify Web API and Web Playback SDK officially stream up to 256/320 kbps AAC/Vorbis. Bit-perfect 24-bit studio FLAC is not exposed in public third-party Web SDK.', badge: 'RESTRICTED' }
+    { id: 'lossless', label: 'Lossless FLAC Hi-Res', desc: 'AVAILABLE for your own files (local/FLAC uploads play bit-for-bit) and Jamendo FLAC where artists provide it. Not available through Spotify Web SDK (max 320 kbps there).', badge: 'LOCAL + JAMENDO' }
   ];
 
   return (
     <div className="pb-28 pt-2 px-4 space-y-5 max-w-xl mx-auto">
-      {/* HiFi Audit & Status Banner */}
+      {/* Audio Pipeline Status Banner */}
       <div className="p-4 bg-[#201f1f] border border-white/10 rounded-2xl flex items-center justify-between shadow-xl">
         <div className="flex items-center gap-3.5">
           <div className="w-12 h-12 rounded-xl bg-[#53e076] text-[#003914] flex items-center justify-center font-black flex-shrink-0 shadow-lg">
@@ -32,31 +58,34 @@ export const AudioSettingsScreen: React.FC<AudioSettingsScreenProps> = ({
             <div className="flex items-center gap-2">
               <h2 className="text-base font-extrabold text-[#e5e2e1]">Audio Quality & Stream Spec</h2>
               <span className="px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-[#53e076] text-[#003914] uppercase">
-                320 KBPS MAX
+                FLAC-ready
               </span>
             </div>
-            <p className="text-xs text-[#c6c6c7] mt-0.5">Spotify Web Playback SDK (Encrypted AAC / Vorbis)</p>
+            <p className="text-xs text-[#c6c6c7] mt-0.5">Open catalogue + local files (real DSP) · Spotify SDK for subscriber playback</p>
           </div>
         </div>
       </div>
 
-      {/* Lossless Transparency Audit Notice */}
+      {/* Quality Transparency Notice */}
       <div className="p-3.5 bg-amber-500/10 border border-amber-500/20 rounded-2xl space-y-1">
         <div className="flex items-center gap-2">
           <span className="material-symbols-outlined text-amber-400 text-base">info</span>
           <h3 className="text-xs font-bold text-amber-300 uppercase tracking-wide">
-            Lossless HiFi Integration Status
+            Quality Transparency
           </h3>
         </div>
         <p className="text-[11px] text-[#c6c6c7] leading-relaxed">
-          <strong className="text-white">NOT AVAILABLE THROUGH CURRENT OFFICIAL INTEGRATION:</strong> Spotify’s official Web Playback SDK provides encrypted high-bitrate streaming at up to 320 kbps (Vorbis/AAC) for Premium accounts. True uncompressed 24-bit studio FLAC is not publicly supported by Spotify’s third-party web developer endpoints. No audio is ever faked or simulated.
+          <strong className="text-white">What each source really delivers:</strong> Jamendo up to FLAC where
+          artists provide it · Audius transcoded MP3 · Internet Archive VBR MP3 for streaming (FLAC
+          originals where uploaded) · your own files bit-for-bit · Spotify Web Playback up to
+          320 kbps for Premium sessions only. No audio is ever faked, upscaled, or mislabeled.
         </p>
       </div>
 
       {/* End-to-End Pipeline Diagram */}
       <div className="bg-[#201f1f] border border-white/10 rounded-2xl p-5 shadow-xl space-y-4">
         <h3 className="text-xs font-extrabold text-[#53e076] uppercase tracking-wider">
-          Official Audio Pipeline Architecture
+          Audio Pipeline Architecture
         </h3>
 
         <div className="grid grid-cols-3 gap-2 text-center">
@@ -64,16 +93,16 @@ export const AudioSettingsScreen: React.FC<AudioSettingsScreenProps> = ({
           <div className="p-2.5 bg-[#131313] rounded-xl border border-white/5 flex flex-col items-center">
             <span className="material-symbols-outlined text-[#53e076] text-xl mb-1">album</span>
             <span className="text-[10px] uppercase font-bold text-[#c6c6c7]">Source</span>
-            <span className="text-xs font-extrabold text-[#e5e2e1] mt-0.5">Spotify Cloud</span>
-            <span className="text-[10px] font-mono text-[#53e076]">320k Premium</span>
+            <span className="text-xs font-extrabold text-[#e5e2e1] mt-0.5">Open Catalogue</span>
+            <span className="text-[10px] font-mono text-[#53e076]">Full-length</span>
           </div>
 
           {/* Stream */}
           <div className="p-2.5 bg-[#131313] rounded-xl border border-white/5 flex flex-col items-center">
-            <span className="material-symbols-outlined text-[#53e076] text-xl mb-1">lock</span>
+            <span className="material-symbols-outlined text-[#53e076] text-xl mb-1">tune</span>
             <span className="text-[10px] uppercase font-bold text-[#c6c6c7]">Pipeline</span>
-            <span className="text-xs font-extrabold text-[#e5e2e1] mt-0.5">Web SDK EME</span>
-            <span className="text-[10px] font-mono text-[#53e076]">Encrypted Stream</span>
+            <span className="text-xs font-extrabold text-[#e5e2e1] mt-0.5">WebAudio DSP</span>
+            <span className="text-[10px] font-mono text-[#53e076]">EQ + Normalize</span>
           </div>
 
           {/* DAC Output */}
@@ -88,15 +117,18 @@ export const AudioSettingsScreen: React.FC<AudioSettingsScreenProps> = ({
         <div className="p-2.5 bg-[#131313]/60 rounded-xl flex items-center justify-between text-xs text-[#c6c6c7]">
           <span className="flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-[#53e076]" />
-            Official Spotify Playback Protocol
+            Direct HTTPS streams + local DSP
           </span>
-          <span className="font-mono text-[#53e076] text-[11px]">Bit-Accurate AAC/Vorbis</span>
+          <span className="font-mono text-[#53e076] text-[11px]">Spotify SDK only for subscriber playback</span>
         </div>
       </div>
 
-      {/* Streaming Quality Selector */}
+      {/* Streaming Quality Selector (stored preference; the Web SDK chooses the actual stream) */}
       <div className="bg-[#201f1f] border border-white/10 rounded-2xl p-5 shadow-xl space-y-3">
         <h3 className="text-sm font-extrabold text-[#e5e2e1]">Streaming Quality</h3>
+        <p className="text-[11px] text-[#c6c6c7] leading-relaxed">
+          Saved preference only — Spotify's Web Playback SDK chooses the actual delivered bitrate.
+        </p>
         <div className="space-y-2">
           {streamingOptions.map((opt) => {
             const isSelected = settings.streamingQuality === opt.id;
@@ -147,78 +179,223 @@ export const AudioSettingsScreen: React.FC<AudioSettingsScreenProps> = ({
         </div>
       </div>
 
-      {/* Offline Storage Allocation Profile */}
+      {/* Offline Storage Allocation Profile (real browser figures only) */}
       <div className="bg-[#201f1f] border border-white/10 rounded-2xl p-5 shadow-xl space-y-3">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-extrabold text-[#e5e2e1]">Storage Profile</h3>
-          <span className="text-xs font-mono text-[#53e076]">~1.2 GB / 50 FLAC tracks</span>
+          <span className="text-xs font-mono text-[#53e076]">
+            {storage ? `${formatBytes(storage.usage)} of ${formatBytes(storage.quota)}` : 'Measuring…'}
+          </span>
         </div>
 
-        {/* Visual Segmented Bar */}
-        <div className="h-3 w-full bg-[#131313] rounded-full overflow-hidden flex">
-          <div className="bg-[#53e076] h-full w-[25%]" title="Lossless Audio 2.4 GB" />
-          <div className="bg-[#1db954]/50 h-full w-[15%]" title="App Cache 1.1 GB" />
-          <div className="bg-white/10 h-full w-[60%]" title="Free Space 64 GB" />
-        </div>
+        <p className="text-[11px] text-[#c6c6c7] leading-relaxed">
+          Cached library metadata and lyrics. Spotify audio is never stored (Spotify policy);
+          only your own local files and server streams can be kept offline.
+        </p>
 
-        <div className="flex items-center justify-between text-[11px] text-[#c6c6c7] pt-1">
-          <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-[#53e076]" />
-            Lossless Audio: 2.4 GB
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-[#1db954]/50" />
-            Cache: 1.1 GB
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-white/20" />
-            Free: 64.2 GB
-          </span>
-        </div>
+        {storage && storage.quota > 0 && (
+          <div className="h-3 w-full bg-[#131313] rounded-full overflow-hidden flex">
+            <div
+              className="bg-[#53e076] h-full"
+              style={{ width: `${Math.min(100, (storage.usage / storage.quota) * 100)}%` }}
+            />
+          </div>
+        )}
       </div>
 
-      {/* Hardware & DAC Pipeline */}
+      {/* Hardware & DAC Pipeline: real DSP for local files, honest labels elsewhere */}
       <div className="bg-[#201f1f] border border-white/10 rounded-2xl p-5 shadow-xl space-y-4">
         <h3 className="text-sm font-extrabold text-[#e5e2e1]">Hardware & DAC Controls</h3>
+        <p className="text-[11px] text-[#c6c6c7] leading-relaxed">
+          The equalizer and normalization below drive a real WebAudio chain that applies
+          <strong className="text-white"> only to files played from this device</strong>.
+          Spotify streams are untouched (Spotify's players don't allow it).
+        </p>
+        <LocalDspControls />
 
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between pt-2 border-t border-white/5 opacity-60">
           <div>
-            <p className="text-xs font-bold text-[#e5e2e1]">Bit-Perfect Passthrough</p>
+            <p className="text-xs font-bold text-[#e5e2e1]">
+              Bit-Perfect Passthrough <span className="text-[9px] font-extrabold bg-[#353534] text-[#c6c6c7] rounded px-1.5 py-0.5 uppercase ml-1">Planned</span>
+            </p>
             <p className="text-[11px] text-[#c6c6c7]">Bypasses OS audio mixer for external USB DACs</p>
           </div>
           <button
-            onClick={() => onUpdateSettings({ bitPerfectPassthrough: !settings.bitPerfectPassthrough })}
-            className={`w-12 h-6 rounded-full transition-colors relative p-0.5 ${
-              settings.bitPerfectPassthrough ? 'bg-[#53e076]' : 'bg-[#353534]'
-            }`}
+            disabled
+            title="Not implemented in this build"
+            className="w-12 h-6 rounded-full bg-[#353534] relative p-0.5 cursor-not-allowed"
           >
-            <div
-              className={`w-5 h-5 rounded-full bg-[#131313] transition-transform ${
-                settings.bitPerfectPassthrough ? 'translate-x-6' : 'translate-x-0'
-              }`}
-            />
+            <div className="w-5 h-5 rounded-full bg-[#131313]" />
           </button>
         </div>
 
-        <div className="flex items-center justify-between pt-2 border-t border-white/5">
+        <div className="flex items-center justify-between pt-2 border-t border-white/5 opacity-60">
           <div>
-            <p className="text-xs font-bold text-[#e5e2e1]">Volume Normalization</p>
-            <p className="text-[11px] text-[#c6c6c7]">Maintain consistent volume across all tracks</p>
+            <p className="text-xs font-bold text-[#e5e2e1]">
+              Bit-Perfect Passthrough <span className="text-[9px] font-extrabold bg-[#353534] text-[#c6c6c7] rounded px-1.5 py-0.5 uppercase ml-1">Planned</span>
+            </p>
+            <p className="text-[11px] text-[#c6c6c7]">Bypasses OS audio mixer for external USB DACs</p>
           </div>
           <button
-            onClick={() => onUpdateSettings({ volumeNormalization: !settings.volumeNormalization })}
-            className={`w-12 h-6 rounded-full transition-colors relative p-0.5 ${
-              settings.volumeNormalization ? 'bg-[#53e076]' : 'bg-[#353534]'
-            }`}
+            disabled
+            title="Not implemented in this build"
+            className="w-12 h-6 rounded-full bg-[#353534] relative p-0.5 cursor-not-allowed"
           >
-            <div
-              className={`w-5 h-5 rounded-full bg-[#131313] transition-transform ${
-                settings.volumeNormalization ? 'translate-x-6' : 'translate-x-0'
-              }`}
-            />
+            <div className="w-5 h-5 rounded-full bg-[#131313]" />
           </button>
         </div>
       </div>
+
+      {/* Own music server (Subsonic/Navidrome/Jellyfin): real ping test, no fake library */}
+      <SubsonicSection />
+    </div>
+  );
+};
+
+const LocalDspControls: React.FC = () => {
+  const svc = AudioPlayerService.getInstance();
+  const [eq, setEq] = useState(svc.getEq());
+  const [norm, setNorm] = useState(svc.isNormalizationOn());
+
+  const bands: { id: 'low' | 'mid' | 'high'; label: string }[] = [
+    { id: 'low', label: 'Bass' },
+    { id: 'mid', label: 'Mid' },
+    { id: 'high', label: 'Treble' }
+  ];
+
+  return (
+    <div className="space-y-3 p-3 bg-[#131313] rounded-xl border border-white/5">
+      {bands.map((b) => (
+        <div key={b.id} className="flex items-center gap-3">
+          <span className="text-[11px] font-bold text-[#c6c6c7] w-12">{b.label}</span>
+          <input
+            type="range"
+            min={-12}
+            max={12}
+            step={1}
+            value={eq[b.id]}
+            onChange={(e) => {
+              const v = Number(e.target.value);
+              svc.setEq(b.id, v);
+              setEq(svc.getEq());
+            }}
+            className="flex-1 h-1.5 accent-[#53e076]"
+            aria-label={`${b.label} EQ gain in decibels`}
+          />
+          <span className="text-[11px] font-mono text-[#53e076] w-12 text-right">
+            {eq[b.id] > 0 ? `+${eq[b.id]}` : eq[b.id]} dB
+          </span>
+        </div>
+      ))}
+      <div className="flex items-center justify-between pt-2 border-t border-white/5">
+        <div>
+          <p className="text-xs font-bold text-[#e5e2e1]">Volume Normalization</p>
+          <p className="text-[11px] text-[#c6c6c7]">Measures each local file (RMS) and evens out loudness</p>
+        </div>
+        <button
+          onClick={() => {
+            svc.setNormalization(!norm);
+            setNorm(svc.isNormalizationOn());
+          }}
+          className={`w-12 h-6 rounded-full transition-colors relative p-0.5 ${
+            norm ? 'bg-[#53e076]' : 'bg-[#353534]'
+          }`}
+          role="switch"
+          aria-checked={norm}
+        >
+          <div
+            className={`w-5 h-5 rounded-full bg-[#131313] transition-transform ${
+              norm ? 'translate-x-6' : 'translate-x-0'
+            }`}
+          />
+        </button>
+      </div>
+    </div>
+  );
+};
+
+const SubsonicSection: React.FC = () => {
+  const [server, setServer] = useState(() => sessionStorage.getItem('soundscape_subsonic_server') ?? '');
+  const [user, setUser] = useState(() => sessionStorage.getItem('soundscape_subsonic_user') ?? '');
+  const [pass, setPass] = useState(() => sessionStorage.getItem('soundscape_subsonic_pass') ?? '');
+  const [status, setStatus] = useState<'idle' | 'testing' | 'ok' | 'fail'>('idle');
+  const [detail, setDetail] = useState('');
+
+  const test = async () => {
+    const base = server.trim().replace(/\/+$/, '');
+    if (!base || !user) {
+      setStatus('fail');
+      setDetail('Enter the server URL and username first.');
+      return;
+    }
+    setStatus('testing');
+    setDetail('');
+    try {
+      const q = new URLSearchParams({
+        u: user, p: pass, v: '1.16.1', c: 'Soundscape', f: 'json'
+      });
+      const res = await fetch(`${base}/rest/ping.view?${q.toString()}`, {
+        signal: AbortSignal.timeout(10000)
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json() as { 'subsonic-response'?: { status?: string; error?: { message?: string } } };
+      const sr = data['subsonic-response'];
+      if (sr?.status === 'ok') {
+        sessionStorage.setItem('soundscape_subsonic_server', base);
+        sessionStorage.setItem('soundscape_subsonic_user', user);
+        sessionStorage.setItem('soundscape_subsonic_pass', pass);
+        setStatus('ok');
+        setDetail('Server reachable and credentials accepted. Library browsing and streaming from your server is planned — nothing is synced yet.');
+      } else {
+        throw new Error(sr?.error?.message || 'Server rejected the request');
+      }
+    } catch (e) {
+      setStatus('fail');
+      setDetail(e instanceof Error ? e.message : 'Connection failed');
+    }
+  };
+
+  return (
+    <div className="bg-[#201f1f] border border-white/10 rounded-2xl p-5 shadow-xl space-y-3">
+      <h3 className="text-sm font-extrabold text-[#e5e2e1]">Your own music server</h3>
+      <p className="text-[11px] text-[#c6c6c7] leading-relaxed">
+        Optional Subsonic-compatible server (Navidrome, Jellyfin, Gonic). Credentials stay in this
+        tab's session storage and are only sent to your server for the connection test.
+      </p>
+      <input
+        type="url"
+        value={server}
+        onChange={(e) => setServer(e.target.value)}
+        placeholder="https://music.example.com"
+        className="w-full px-3 py-2 bg-[#131313] text-xs font-mono text-[#e5e2e1] rounded-lg border border-white/10 focus:border-[#53e076] focus:outline-none"
+      />
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={user}
+          onChange={(e) => setUser(e.target.value)}
+          placeholder="Username"
+          autoComplete="username"
+          className="flex-1 px-3 py-2 bg-[#131313] text-xs text-[#e5e2e1] rounded-lg border border-white/10 focus:border-[#53e076] focus:outline-none"
+        />
+        <input
+          type="password"
+          value={pass}
+          onChange={(e) => setPass(e.target.value)}
+          placeholder="Password"
+          autoComplete="current-password"
+          className="flex-1 px-3 py-2 bg-[#131313] text-xs text-[#e5e2e1] rounded-lg border border-white/10 focus:border-[#53e076] focus:outline-none"
+        />
+      </div>
+      <button
+        onClick={test}
+        disabled={status === 'testing'}
+        className="w-full py-2.5 rounded-xl bg-[#2a2a2a] hover:bg-[#353534] text-[#e5e2e1] text-xs font-bold disabled:opacity-50"
+      >
+        {status === 'testing' ? 'Testing…' : 'Test connection'}
+      </button>
+      {status === 'ok' && <p className="text-[11px] text-[#53e076] font-semibold">Connected: {detail}</p>}
+      {status === 'fail' && <p className="text-[11px] text-[#ffb4ab]">Not connected: {detail}</p>}
     </div>
   );
 };

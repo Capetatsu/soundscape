@@ -95,6 +95,8 @@ export type ActiveScreen =
   | 'playlist' 
   | 'album'
   | 'artist'
+  | 'stats'
+  | 'radio'
   | 'account_sync' 
   | 'audio_settings' 
   | 'connect_device' 

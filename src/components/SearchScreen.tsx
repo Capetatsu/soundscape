@@ -1,9 +1,29 @@
 import React, { useState, useEffect } from 'react';
 import { SpotifyTrack, SpotifyArtist, SpotifyAlbum, SpotifyPlaylist } from '../types';
 import { SpotifyApiClient } from '../services/spotifyApi';
+import { audiusSearchTracks, type AudiusTrack } from '../core/providers/audius/audiusClient';
+import { archiveSearchRecordings, type ArchiveRecording } from '../core/providers/archive/archiveClient';
+import { ArtworkImg } from './ArtworkImg';
+
+function audiusToUiTrack(t: AudiusTrack): SpotifyTrack {
+  return {
+    id: `audius-${t.id}`,
+    uri: `audius:track:${t.id}`,
+    name: t.title,
+    artists: [{ name: t.artistName }],
+    album: {
+      name: 'Audius open catalogue',
+      images: t.artworkUrl ? [{ url: t.artworkUrl }] : []
+    },
+    duration_ms: t.durationSec * 1000,
+    preview_url: null,
+    explicit: false
+  };
+}
 
 interface SearchScreenProps {
   onPlayTrack: (track: SpotifyTrack) => void;
+  onPlayArchiveRecording?: (rec: ArchiveRecording) => void;
   onSelectPlaylist: (playlist: SpotifyPlaylist) => void;
   onSelectAlbum: (albumId: string) => void;
   onSelectArtist: (artistId: string) => void;
@@ -14,6 +34,7 @@ interface SearchScreenProps {
 
 export const SearchScreen: React.FC<SearchScreenProps> = ({
   onPlayTrack,
+  onPlayArchiveRecording,
   onSelectPlaylist,
   onSelectAlbum,
   onSelectArtist,
@@ -23,13 +44,21 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({
 }) => {
   const [query, setQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<'all' | 'songs' | 'artists' | 'albums' | 'playlists'>('all');
-  const [recentSearches, setRecentSearches] = useState([
-    'Sabrina Carpenter',
-    'Billie Eilish',
-    'Fred again..',
-    'Synthwave'
-  ]);
+  // Real search history: persisted locally, starts empty. Never hardcoded names.
+  const [recentSearches, setRecentSearches] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem('soundscape_recent_searches');
+      const arr = raw ? (JSON.parse(raw) as unknown) : [];
+      return Array.isArray(arr) ? arr.filter((s): s is string => typeof s === 'string').slice(0, 8) : [];
+    } catch {
+      return [];
+    }
+  });
   const [isSearching, setIsSearching] = useState(false);
+  const [audiusTracks, setAudiusTracks] = useState<SpotifyTrack[]>([]);
+  const [audiusFailed, setAudiusFailed] = useState(false);
+  const [archiveRecs, setArchiveRecs] = useState<ArchiveRecording[]>([]);
+  const [archiveFailed, setArchiveFailed] = useState(false);
   const [searchResults, setSearchResults] = useState<{
     tracks: SpotifyTrack[];
     artists: SpotifyArtist[];
@@ -61,34 +90,71 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({
     { id: 'focus', title: 'Deep Focus', color: 'from-emerald-700 to-lime-950' }
   ];
 
-  // Debounced search
+  // Debounced search: Spotify (when connected) + free catalogue (always, no login).
   useEffect(() => {
     if (!query.trim()) {
       setSearchResults({ tracks: [], artists: [], albums: [], playlists: [] });
+      setAudiusTracks([]);
+      setAudiusFailed(false);
+      setArchiveRecs([]);
+      setArchiveFailed(false);
       return;
     }
 
+    let cancelled = false;
     const timer = setTimeout(async () => {
       setIsSearching(true);
+      recordSearch(query);
+      // Free catalogue first: works without any account, full-length tracks.
+      try {
+        const open = await audiusSearchTracks(query, 10);
+        if (!cancelled) {
+          setAudiusTracks(open.map(audiusToUiTrack));
+          setAudiusFailed(false);
+        }
+      } catch {
+        if (!cancelled) {
+          setAudiusTracks([]);
+          setAudiusFailed(true);
+        }
+      }
+      // Archive recordings: live concerts + netlabels, no account either.
+      try {
+        const recs = await archiveSearchRecordings(query, 6);
+        if (!cancelled) {
+          setArchiveRecs(recs);
+          setArchiveFailed(false);
+        }
+      } catch {
+        if (!cancelled) {
+          setArchiveRecs([]);
+          setArchiveFailed(true);
+        }
+      }
       if (isAuthenticated) {
         try {
-          const res = await SpotifyApiClient.search(query, 'track,artist,album,playlist', 20);
-          setSearchResults({
-            tracks: res.tracks?.items || [],
-            artists: res.artists?.items || [],
-            albums: res.albums?.items || [],
-            playlists: res.playlists?.items?.filter(Boolean) || []
-          });
+          const res = await SpotifyApiClient.search(query, 'track,artist,album,playlist', 10);
+          if (!cancelled) {
+            setSearchResults({
+              tracks: res.tracks?.items || [],
+              artists: res.artists?.items || [],
+              albums: res.albums?.items || [],
+              playlists: res.playlists?.items?.filter(Boolean) || []
+            });
+          }
         } catch {
-          performLocalSearch(query);
+          if (!cancelled) performLocalSearch(query);
         }
       } else {
         performLocalSearch(query);
       }
-      setIsSearching(false);
+      if (!cancelled) setIsSearching(false);
     }, 300);
 
-    return () => clearTimeout(timer);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [query, isAuthenticated]);
 
   const performLocalSearch = (q: string) => {
@@ -107,8 +173,23 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({
     });
   };
 
+  const persistRecent = (items: string[]) => {
+    setRecentSearches(items);
+    try {
+      localStorage.setItem('soundscape_recent_searches', JSON.stringify(items));
+    } catch {
+      // storage full/blocked: history simply won't persist
+    }
+  };
+
   const removeRecent = (item: string) => {
-    setRecentSearches((prev) => prev.filter((s) => s !== item));
+    persistRecent(recentSearches.filter((s) => s !== item));
+  };
+
+  const recordSearch = (q: string) => {
+    const clean = q.trim().slice(0, 80);
+    if (!clean) return;
+    persistRecent([clean, ...recentSearches.filter((s) => s !== clean)].slice(0, 8));
   };
 
   const topResult = searchResults.tracks[0];
@@ -181,7 +262,7 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({
           <div className="flex items-center justify-between mb-2.5">
             <h2 className="text-sm font-bold text-[#e5e2e1]">Recent searches</h2>
             <button
-              onClick={() => setRecentSearches([])}
+              onClick={() => persistRecent([])}
               className="text-xs font-semibold text-[#c6c6c7] hover:text-[#53e076]"
             >
               Clear all
@@ -220,6 +301,119 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({
             </div>
           ) : (
             <>
+              {/* Free catalogue (Audius): full-length, no login, playable in Soundscape */}
+              {(activeFilter === 'all' || activeFilter === 'songs') && (
+                <div>
+                  <div className="flex items-center gap-2 mb-2.5">
+                    <h2 className="text-base font-bold text-[#e5e2e1]">Free catalogue</h2>
+                    <span className="px-2 py-0.5 rounded-full bg-[#53e076]/20 text-[#53e076] text-[9px] font-extrabold uppercase">
+                      Full tracks · Audius
+                    </span>
+                  </div>
+                  {audiusFailed ? (
+                    <p className="text-xs text-[#c6c6c7] py-3">
+                      Free catalogue is unreachable right now. Spotify results (if connected) still work for discovery.
+                    </p>
+                  ) : audiusTracks.length === 0 && !isSearching ? (
+                    <p className="text-xs text-[#c6c6c7] py-3">
+                      No free-catalogue match for "{query}" — try different keywords, or browse device files in Your Library.
+                    </p>
+                  ) : (
+                    <div className="space-y-1">
+                      {audiusTracks.map((track) => (
+                        <div
+                          key={track.id}
+                          onClick={() => onPlayTrack(track)}
+                          className="flex items-center justify-between p-2.5 rounded-xl hover:bg-[#201f1f] cursor-pointer transition-colors group"
+                        >
+                          <div className="flex items-center gap-3 min-w-0 flex-1">
+                            <div className="w-10 h-10 rounded-lg overflow-hidden bg-[#131313] flex-shrink-0">
+                              <ArtworkImg
+                                src={track.album?.images?.[0]?.url}
+                                alt={track.name}
+                                className="w-full h-full object-cover"
+                              />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-bold text-[#e5e2e1] truncate group-hover:text-white">
+                                {track.name}
+                              </p>
+                              <p className="text-xs text-[#c6c6c7] truncate">
+                                {track.artists?.map((a) => a.name).join(', ')}
+                              </p>
+                            </div>
+                          </div>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onPlayTrack(track);
+                            }}
+                            className="w-8 h-8 rounded-full flex items-center justify-center text-[#53e076] hover:bg-[#53e076]/10"
+                            title="Play full track"
+                          >
+                            <span className="material-symbols-outlined text-xl">play_arrow</span>
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Live & archive recordings (Internet Archive): full concerts, no login */}
+              {(activeFilter === 'all' || activeFilter === 'songs') && (archiveRecs.length > 0 || archiveFailed) && (
+                <div>
+                  <div className="flex items-center gap-2 mb-2.5">
+                    <h2 className="text-base font-bold text-[#e5e2e1]">Live & archive</h2>
+                    <span className="px-2 py-0.5 rounded-full bg-[#53e076]/20 text-[#53e076] text-[9px] font-extrabold uppercase">
+                      Concerts · Archive
+                    </span>
+                  </div>
+                  {archiveFailed ? (
+                    <p className="text-xs text-[#c6c6c7] py-3">
+                      Archive is unreachable right now.
+                    </p>
+                  ) : (
+                    <div className="space-y-1">
+                      {archiveRecs.map((rec) => (
+                        <div
+                          key={rec.identifier}
+                          onClick={() => onPlayArchiveRecording?.(rec)}
+                          className="flex items-center justify-between p-2.5 rounded-xl hover:bg-[#201f1f] cursor-pointer transition-colors group"
+                        >
+                          <div className="flex items-center gap-3 min-w-0 flex-1">
+                            <div className="w-10 h-10 rounded-lg bg-[#131313] flex-shrink-0 flex items-center justify-center text-[#53e076]">
+                              <span className="material-symbols-outlined text-lg">live_tv</span>
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-bold text-[#e5e2e1] truncate group-hover:text-white">
+                                {rec.title}
+                              </p>
+                              <p className="text-xs text-[#c6c6c7] truncate">
+                                {rec.artist}{rec.date ? ` • ${rec.date.slice(0, 10)}` : ''}
+                              </p>
+                            </div>
+                          </div>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onPlayArchiveRecording?.(rec);
+                            }}
+                            className="px-3 py-1.5 rounded-full bg-[#53e076]/10 text-[#53e076] text-[11px] font-bold hover:bg-[#53e076]/20 flex-shrink-0"
+                            title="Play recording (resolves tracks, plays first, queues rest)"
+                          >
+                            Play set
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <p className="text-[11px] text-[#c6c6c7] mt-1.5">
+                    Audience recordings vary in quality — that's the nature of live tapes, shown honestly.
+                  </p>
+                </div>
+              )}
+
               {/* Top Result Card */}
               {(activeFilter === 'all' || activeFilter === 'songs') && topResult && (
                 <div>

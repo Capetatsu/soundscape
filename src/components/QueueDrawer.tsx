@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { SpotifyTrack } from '../types';
 
 interface QueueDrawerProps {
@@ -20,10 +20,24 @@ export const QueueDrawer: React.FC<QueueDrawerProps> = ({
   onRemoveFromQueue,
   onClearQueue
 }) => {
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div
+      className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
       <div className="bg-[#201f1f] border border-white/10 rounded-t-3xl sm:rounded-3xl w-full max-w-lg max-h-[85vh] overflow-y-auto shadow-2xl p-6 space-y-5 animate-in slide-in-from-bottom duration-200">
         {/* Header */}
         <div className="flex items-center justify-between">
@@ -32,6 +46,7 @@ export const QueueDrawer: React.FC<QueueDrawerProps> = ({
             <h2 className="text-lg font-extrabold text-[#e5e2e1]">Play Queue</h2>
           </div>
           <button
+            id="queue-close-btn"
             onClick={onClose}
             className="w-9 h-9 rounded-full bg-[#2a2a2a] hover:bg-[#353534] text-[#c6c6c7] hover:text-white flex items-center justify-center"
           >

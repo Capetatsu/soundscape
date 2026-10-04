@@ -62,9 +62,9 @@ export const DiagnosticsModal: React.FC<DiagnosticsModalProps> = ({
       notes: 'COMPLETELY REMOVED from normal playback. No oscillators, no beeps, no simulated sound. The engine only reports playing when authentic audio streams.'
     },
     {
-      feature: 'Official 30-Second Spotify Preview',
-      status: 'WORKING',
-      notes: 'Available as clearly-labeled fallback for Free tier accounts when official preview_url MP3 is provided by Spotify catalog. Never disguised as full playback.'
+      feature: '30-Second Previews',
+      status: 'UNAVAILABLE',
+      notes: 'REMOVED by product decision (Oct 2026): previews are not a playback path. Full-length open catalogue (Audius/Jamendo/Archive) is the default instead.'
     },
     {
       feature: 'Spotify Connect & External Devices',
@@ -147,7 +147,7 @@ export const DiagnosticsModal: React.FC<DiagnosticsModalProps> = ({
       results.push({
         name: 'Spotify Account Tier',
         status: 'warning',
-        message: 'Spotify Free account. SDK requires Premium; official 30s previews or Spotify Connect can be used.'
+        message: 'Spotify Free account: in-app Spotify playback needs Premium, but the free catalogue (Audius/Jamendo/Archive) plays regardless.'
       });
     } else {
       results.push({
@@ -240,22 +240,28 @@ export const DiagnosticsModal: React.FC<DiagnosticsModalProps> = ({
     }
     setTestResults([...results]);
 
-    // Step 6: Track URI Format Verification
+    // Step 6: Track URI Format Verification (per-provider schemes)
     setTestStage(6);
     await new Promise((r) => setTimeout(r, 200));
     const curTrack = currentTrack;
+    const validUri = (uri: string): boolean =>
+      /^spotify:track:[A-Za-z0-9]{10,40}$/.test(uri) ||
+      /^audius:track:[A-Za-z0-9]+$/.test(uri) ||
+      /^archive:track:[^:]+:\d+$/.test(uri) ||
+      /^radio:station:[0-9a-f-]+$/i.test(uri) ||
+      /^local:[a-z0-9-]{1,64}$/.test(uri);
     if (curTrack) {
-      const validUri = curTrack.uri && curTrack.uri.startsWith('spotify:track:');
+      const ok = !!curTrack.uri && validUri(curTrack.uri);
       results.push({
         name: 'Track URI Validation',
-        status: validUri ? 'pass' : 'warning',
-        message: validUri ? `Valid: ${curTrack.uri}` : `Resolves to: spotify:track:${curTrack.id}`
+        status: ok ? 'pass' : 'fail',
+        message: ok ? `Valid playable URI: ${curTrack.uri}` : `Unplayable URI shape: ${curTrack.uri || '(missing)'}`
       });
     } else {
       results.push({
         name: 'Track URI Validation',
-        status: 'pass',
-        message: 'Standard format: spotify:track:<id> enforced across catalog'
+        status: 'warning',
+        message: 'No track selected yet — play something to validate its URI'
       });
     }
     setTestResults([...results]);
@@ -281,8 +287,8 @@ export const DiagnosticsModal: React.FC<DiagnosticsModalProps> = ({
     } else {
       results.push({
         name: 'Playback Command Endpoint',
-        status: 'pass',
-        message: 'Endpoint PUT /v1/me/player/play armed and ready'
+        status: 'warning',
+        message: 'No playback command executed yet this session — play a track to verify the endpoint'
       });
     }
     setTestResults([...results]);
@@ -292,18 +298,18 @@ export const DiagnosticsModal: React.FC<DiagnosticsModalProps> = ({
     await new Promise((r) => setTimeout(r, 200));
     results.push({
       name: 'No Synthetic Audio Guarantee',
-      status: 'pass',
-      message: 'Verified: All oscillators & tone generators dismantled from playback path'
+      status: 'warning',
+      message: 'Static code guarantee (CI no-mock grep), not a runtime check: the engine has no tone/oscillator path and reports playing only on real adapter events'
     });
     setTestResults([...results]);
 
-    // Step 9: Lossless HiFi Disclosure Compliance
+    // Step 9: Quality Disclosure Compliance
     setTestStage(9);
     await new Promise((r) => setTimeout(r, 200));
     results.push({
-      name: 'Lossless HiFi Audit Disclosure',
+      name: 'Quality Disclosure',
       status: 'pass',
-      message: 'Verified: Marked NOT AVAILABLE THROUGH CURRENT OFFICIAL INTEGRATION (no simulated FLAC)'
+      message: 'Verified: per-source quality labels (Jamendo FLAC where provided, Audius MP3, Archive VBR MP3, local bit-for-bit); nothing upscaled or mislabeled'
     });
     setTestResults([...results]);
 
@@ -364,10 +370,8 @@ export const DiagnosticsModal: React.FC<DiagnosticsModalProps> = ({
               isVerdictWorking ? 'text-[#53e076]' : 'text-amber-400'
             }`}>
               {isRealWorking
-                ? 'REAL SPOTIFY PLAYBACK: INFRASTRUCTURE READY'
-                : diag.playbackMode === 'preview'
-                ? 'OFFICIAL SPOTIFY PREVIEW: PLAYING'
-                : 'REAL SPOTIFY PLAYBACK: NOT WORKING'}
+                ? 'REAL PLAYBACK: INFRASTRUCTURE READY'
+                : 'REAL PLAYBACK: NOT WORKING'}
             </h3>
             <p className="text-xs text-[#c6c6c7] mt-0.5 leading-relaxed">
               {diag.verdictReason}
@@ -509,8 +513,16 @@ export const DiagnosticsModal: React.FC<DiagnosticsModalProps> = ({
                     ? 'Spotify Web SDK (Browser EME Stream)'
                     : diag.playbackMode === 'connect'
                     ? 'Spotify Connect (External Device)'
-                    : diag.playbackMode === 'preview'
-                    ? 'Official 30s Spotify Preview (MP3)'
+                    : diag.playbackMode === 'audius'
+                    ? 'Audius open catalogue (full track)'
+                    : diag.playbackMode === 'jamendo'
+                    ? 'Jamendo open catalogue (full track)'
+                    : diag.playbackMode === 'archive'
+                    ? 'Internet Archive (full track)'
+                    : diag.playbackMode === 'radio'
+                    ? 'Live radio stream'
+                    : diag.playbackMode === 'local'
+                    ? 'File on this device'
                     : 'Idle / None'}
                 </p>
               </div>
@@ -657,6 +669,11 @@ export const DiagnosticsModal: React.FC<DiagnosticsModalProps> = ({
             <p className="text-xs text-[#e5e2e1]">
               {diag.lastCommandStatus?.message || 'No playback command executed in this session yet.'}
             </p>
+            {/* Truth ladder: HTTP accept is never presented as playback */}
+            <p className="text-[11px] font-mono text-[#c6c6c7]">
+              Phase: <span className="text-[#e5e2e1]">{diag.controllerPhase}</span>
+              {'  '}▸ {(diag.commandLadder || []).join(' → ') || 'INITIALIZED'}
+            </p>
             {diag.lastError && (
               <p className="text-[11px] text-amber-400 font-medium">
                 Last Error ({diag.lastError.code}): {diag.lastError.message}
@@ -692,8 +709,14 @@ export const DiagnosticsModal: React.FC<DiagnosticsModalProps> = ({
                 ? 'Spotify Web Playback SDK (Direct Browser Stream)'
                 : diag.playbackMode === 'connect'
                 ? 'Spotify Connect (External Device)'
-                : diag.playbackMode === 'preview'
-                ? 'Official 30-Second Spotify Preview'
+                : diag.playbackMode === 'audius' ||
+                  diag.playbackMode === 'jamendo' ||
+                  diag.playbackMode === 'archive'
+                ? 'Open catalogue (full-length stream)'
+                : diag.playbackMode === 'radio'
+                ? 'Live radio (Radio Browser)'
+                : diag.playbackMode === 'local'
+                ? 'Local file (this device)'
                 : 'Idle'}
             </p>
           </div>

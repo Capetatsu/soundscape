@@ -27,7 +27,7 @@ export const Header: React.FC<HeaderProps> = ({
       case 'playlist':
         return 'Playlist';
       case 'account_sync':
-        return 'Connected Account';
+        return 'Account & Sync';
       case 'audio_settings':
         return 'Lossless & Audio';
       case 'connect_device':
@@ -65,7 +65,7 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
             <div className="flex flex-col">
               <span className="font-extrabold text-sm tracking-tight text-[#e5e2e1] leading-none">Soundscape</span>
-              <span className="text-[9px] font-semibold tracking-wider text-[#53e076] uppercase leading-tight">HiFi Lossless</span>
+              <span className="text-[9px] font-semibold tracking-wider text-[#53e076] uppercase leading-tight">Free Music Player</span>
             </div>
           </div>
         </div>

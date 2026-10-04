@@ -10,6 +10,8 @@ export const BottomNav: React.FC<BottomNavProps> = ({ currentScreen, onNavigate 
   const isHome = currentScreen === 'home';
   const isSearch = currentScreen === 'search';
   const isLibrary = currentScreen === 'library';
+  const isStats = currentScreen === 'stats';
+  const isRadio = currentScreen === 'radio';
 
   return (
     <nav className="sticky bottom-0 z-40 bg-[#131313]/95 backdrop-blur-xl border-t border-white/5 px-6 pt-2 pb-safe pb-3 flex items-center justify-around">
@@ -53,6 +55,34 @@ export const BottomNav: React.FC<BottomNavProps> = ({ currentScreen, onNavigate 
           library_music
         </span>
         <span className="text-[11px] font-semibold tracking-tight">Your Library</span>
+      </button>
+
+      {/* Stats Tab */}
+      <button
+        id="nav-stats-btn"
+        onClick={() => onNavigate('stats')}
+        className={`flex flex-col items-center gap-1 transition-colors py-1 px-4 ${
+          isStats ? 'text-[#53e076]' : 'text-[#c6c6c7] hover:text-[#e5e2e1]'
+        }`}
+      >
+        <span className={`material-symbols-outlined text-2xl ${isStats ? 'fill-1' : ''}`}>
+          bar_chart
+        </span>
+        <span className="text-[11px] font-semibold tracking-tight">Stats</span>
+      </button>
+
+      {/* Radio Tab */}
+      <button
+        id="nav-radio-btn"
+        onClick={() => onNavigate('radio')}
+        className={`flex flex-col items-center gap-1 transition-colors py-1 px-4 ${
+          isRadio ? 'text-[#53e076]' : 'text-[#c6c6c7] hover:text-[#e5e2e1]'
+        }`}
+      >
+        <span className={`material-symbols-outlined text-2xl ${isRadio ? 'fill-1' : ''}`}>
+          radio
+        </span>
+        <span className="text-[11px] font-semibold tracking-tight">Radio</span>
       </button>
     </nav>
   );

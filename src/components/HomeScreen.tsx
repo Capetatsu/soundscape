@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { SpotifyPlaylist, SpotifyTrack, SpotifyArtist, SpotifyAlbum, SpotifyUser } from '../types';
-import { SpotifyApiClient } from '../services/spotifyApi';
+import { SpotifyPlaylist, SpotifyTrack, SpotifyArtist, SpotifyUser } from '../types';
+import { audiusTrending, type AudiusTrack } from '../core/providers/audius/audiusClient';
+import { ArtworkImg } from './ArtworkImg';
 
 interface HomeScreenProps {
   playlists: SpotifyPlaylist[];
@@ -37,45 +38,41 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   user,
   isAuthenticated
 }) => {
-  const [featuredPlaylists, setFeaturedPlaylists] = useState<SpotifyPlaylist[]>([]);
-  const [newReleases, setNewReleases] = useState<SpotifyAlbum[]>([]);
-  const [featuredMessage, setFeaturedMessage] = useState<string>('Featured by Spotify');
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [trending, setTrending] = useState<SpotifyTrack[]>([]);
+  const [trendingFailed, setTrendingFailed] = useState(false);
 
-  // Load official Spotify featured playlists and new releases when authenticated
+  // Discovery shelf: Audius trending (free catalogue, no login).
+  // Spotify browse/new-releases endpoints were removed under Dev Mode — not called.
   useEffect(() => {
     let isMounted = true;
-    if (isAuthenticated) {
-      setIsLoadingMore(true);
-      Promise.all([
-        SpotifyApiClient.getFeaturedPlaylists(10),
-        SpotifyApiClient.getNewReleases(10)
-      ])
-        .then(([featuredRes, releasesRes]) => {
-          if (!isMounted) return;
-          if (featuredRes.playlists.length > 0) {
-            setFeaturedPlaylists(featuredRes.playlists);
-            if (featuredRes.message) setFeaturedMessage(featuredRes.message);
-          }
-          if (releasesRes.length > 0) {
-            setNewReleases(releasesRes);
-          }
-        })
-        .catch((err) => {
-          console.warn('Could not fetch featured/releases from Spotify:', err);
-        })
-        .finally(() => {
-          if (isMounted) setIsLoadingMore(false);
-        });
-    } else {
-      setFeaturedPlaylists([]);
-      setNewReleases([]);
-    }
+    audiusTrending(undefined, 10)
+      .then((items: AudiusTrack[]) => {
+        if (!isMounted) return;
+        setTrending(
+          items.map((t) => ({
+            id: `audius-${t.id}`,
+            uri: `audius:track:${t.id}`,
+            name: t.title,
+            artists: [{ name: t.artistName }],
+            album: {
+              name: 'Audius open catalogue',
+              images: t.artworkUrl ? [{ url: t.artworkUrl }] : []
+            },
+            duration_ms: t.durationSec * 1000,
+            preview_url: null,
+            explicit: false
+          }))
+        );
+      })
+      .catch((err) => {
+        console.warn('Could not fetch Audius trending:', err);
+        if (isMounted) setTrendingFailed(true);
+      });
 
     return () => {
       isMounted = false;
     };
-  }, [isAuthenticated]);
+  }, []);
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -151,10 +148,10 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             <p className="text-[11px] font-mono text-[#c6c6c7] flex items-center gap-1.5 mt-0.5">
               <span
                 className={`w-1.5 h-1.5 rounded-full ${
-                  isAuthenticated ? 'bg-[#53e076] animate-pulse' : 'bg-amber-400'
+                  isAuthenticated ? 'bg-[#53e076] animate-pulse' : 'bg-[#53e076]'
                 }`}
               />
-              <span>{isAuthenticated ? 'Connected to Spotify API' : 'Spotify Account Disconnected'}</span>
+              <span>{isAuthenticated ? 'Spotify library connected' : 'Free catalogue ready — no login needed'}</span>
             </p>
           </div>
         </div>
@@ -178,36 +175,27 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         </div>
       </div>
 
-      {/* If Not Authenticated: Prompt to Connect Spotify Account */}
+      {/* If Not Authenticated: small optional Spotify library upsell (never the focus) */}
       {!isAuthenticated && (
-        <div className="mx-4 p-5 rounded-2xl bg-gradient-to-br from-[#1c2e20] via-[#162319] to-[#131313] border border-[#53e076]/30 shadow-xl">
-          <div className="flex items-start gap-4">
-            <div className="w-12 h-12 rounded-xl bg-[#1db954] text-[#003914] flex items-center justify-center flex-shrink-0 shadow-lg">
-              <span className="material-symbols-outlined text-2xl font-bold">radio</span>
+        <div className="mx-4 p-4 rounded-2xl bg-[#1c1b1b] border border-white/10">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-[#1db954]/15 text-[#53e076] flex items-center justify-center flex-shrink-0">
+              <span className="material-symbols-outlined text-xl">library_add</span>
             </div>
             <div className="flex-1 min-w-0">
-              <h2 className="text-base font-bold text-white tracking-tight">
-                Connect Your Spotify Account
-              </h2>
-              <p className="text-xs text-[#c6c6c7] mt-1 leading-relaxed">
-                Authorize Soundscape with your Spotify account to load your real Liked Songs, authentic playlists, recently played tracks, top artists, and official Spotify album artwork.
+              <p className="text-xs font-bold text-[#e5e2e1]">
+                Have Spotify playlists? Import them.
               </p>
-              <div className="mt-4 flex flex-wrap items-center gap-3">
-                <button
-                  onClick={onOpenSync}
-                  className="px-5 py-2.5 rounded-full bg-[#1db954] hover:bg-[#53e076] text-[#003914] text-xs font-extrabold flex items-center gap-2 shadow-lg active:scale-95 transition-all"
-                >
-                  <span className="material-symbols-outlined text-sm fill-1">lock_open</span>
-                  <span>Connect Spotify Account</span>
-                </button>
-                <button
-                  onClick={onOpenSync}
-                  className="px-4 py-2 rounded-full bg-white/5 hover:bg-white/10 text-[#e5e2e1] text-xs font-semibold border border-white/10 transition-colors"
-                >
-                  Configure Client ID
-                </button>
-              </div>
+              <p className="text-[11px] text-[#c6c6c7] mt-0.5">
+                Optional library sync — the free catalogue already plays without any account.
+              </p>
             </div>
+            <button
+              onClick={onOpenSync}
+              className="px-4 py-2 rounded-full bg-[#2a2a2a] hover:bg-[#353534] text-[#e5e2e1] text-xs font-bold flex-shrink-0"
+            >
+              Connect
+            </button>
           </div>
         </div>
       )}
@@ -347,87 +335,49 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         </div>
       )}
 
-      {/* Official Spotify Featured Playlists */}
-      {featuredPlaylists.length > 0 && (
+      {/* Trending now: free catalogue, playable without any account */}
+      {trending.length > 0 && (
         <div className="px-4">
           <div className="flex items-center justify-between mb-3">
             <div>
-              <h2 className="text-lg font-bold text-[#e5e2e1] tracking-tight">{featuredMessage}</h2>
-              <p className="text-xs text-[#c6c6c7]">Curated playlists directly from Spotify</p>
+              <h2 className="text-lg font-bold text-[#e5e2e1] tracking-tight">Trending now</h2>
+              <p className="text-xs text-[#c6c6c7]">Full tracks from the free catalogue · Audius</p>
             </div>
           </div>
           <div className="flex gap-4 overflow-x-auto no-scrollbar pb-2">
-            {featuredPlaylists.map((pl) => (
+            {trending.map((track) => (
               <div
-                key={pl.id}
-                onClick={() => onSelectPlaylist(pl)}
+                key={track.id}
+                onClick={() => onPlayTrack(track)}
                 className="group w-36 sm:w-44 flex-shrink-0 bg-[#201f1f]/60 hover:bg-[#201f1f] p-3 rounded-xl border border-white/5 cursor-pointer transition-all duration-200"
               >
                 <div className="relative aspect-square w-full rounded-lg overflow-hidden mb-2.5 bg-[#131313] shadow-md">
-                  {pl.images?.[0]?.url ? (
-                    <img
-                      src={pl.images[0].url}
-                      alt={pl.name}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                      referrerPolicy="no-referrer"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-[#c6c6c7]">
-                      <span className="material-symbols-outlined text-4xl">queue_music</span>
-                    </div>
-                  )}
+                  <ArtworkImg
+                    src={track.album?.images?.[0]?.url}
+                    alt={track.name}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    fallbackIcon="music_note"
+                  />
+                  <div className="absolute bottom-2 right-2 w-10 h-10 rounded-full bg-[#53e076] text-[#003914] items-center justify-center shadow-xl hidden group-hover:flex">
+                    <span className="material-symbols-outlined text-xl fill-1">play_arrow</span>
+                  </div>
                 </div>
                 <p className="text-xs sm:text-sm font-bold text-[#e5e2e1] truncate group-hover:text-white">
-                  {pl.name}
+                  {track.name}
                 </p>
-                <p className="text-[11px] text-[#c6c6c7] line-clamp-2 mt-0.5 leading-relaxed">
-                  {pl.description || `By ${pl.owner?.display_name || 'Spotify'}`}
+                <p className="text-[11px] text-[#c6c6c7] truncate mt-0.5">
+                  {track.artists?.map((a) => a.name).join(', ')}
                 </p>
               </div>
             ))}
           </div>
         </div>
       )}
-
-      {/* Official Spotify New Releases */}
-      {newReleases.length > 0 && (
+      {trendingFailed && trending.length === 0 && (
         <div className="px-4">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <h2 className="text-lg font-bold text-[#e5e2e1] tracking-tight">New Releases</h2>
-              <p className="text-xs text-[#c6c6c7]">Latest albums and singles on Spotify</p>
-            </div>
-          </div>
-          <div className="flex gap-4 overflow-x-auto no-scrollbar pb-2">
-            {newReleases.map((alb) => (
-              <div
-                key={alb.id}
-                onClick={() => onSelectAlbum(alb.id)}
-                className="group w-36 sm:w-44 flex-shrink-0 bg-[#201f1f]/60 hover:bg-[#201f1f] p-3 rounded-xl border border-white/5 cursor-pointer transition-all duration-200"
-              >
-                <div className="relative aspect-square w-full rounded-lg overflow-hidden mb-2.5 bg-[#131313] shadow-md">
-                  {alb.images?.[0]?.url ? (
-                    <img
-                      src={alb.images[0].url}
-                      alt={alb.name}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                      referrerPolicy="no-referrer"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-[#c6c6c7]">
-                      <span className="material-symbols-outlined text-4xl">album</span>
-                    </div>
-                  )}
-                </div>
-                <p className="text-xs sm:text-sm font-bold text-[#e5e2e1] truncate group-hover:text-white">
-                  {alb.name}
-                </p>
-                <p className="text-[11px] text-[#c6c6c7] truncate mt-0.5">
-                  {alb.artists?.map((a) => a.name).join(', ')}
-                </p>
-              </div>
-            ))}
-          </div>
+          <p className="text-xs text-[#c6c6c7]">
+            Trending shelf is unreachable right now — search still works for the free catalogue.
+          </p>
         </div>
       )}
 
@@ -514,8 +464,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       {isAuthenticated &&
         playlists.length === 0 &&
         recentTracks.length === 0 &&
-        artists.length === 0 &&
-        !isLoadingMore && (
+        artists.length === 0 && (
           <div className="px-4 py-12 text-center">
             <span className="material-symbols-outlined text-4xl text-[#53e076] mb-2">library_music</span>
             <h3 className="text-base font-bold text-[#e5e2e1]">Your Spotify library is ready</h3>

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { SpotifyUser } from '../types';
 import { SpotifyAuthService } from '../services/spotifyAuth';
 import { REDIRECT_URI } from '../config/redirectUri';
+import type { SyncReport } from '../core/sync/SyncEngine';
 
 interface AccountSyncScreenProps {
   user: SpotifyUser | null;
@@ -14,6 +15,14 @@ interface AccountSyncScreenProps {
   clientId: string;
   onUpdateClientId: (id: string) => void;
   onConnectWithToken?: (token: string) => Promise<void>;
+  syncReport?: SyncReport | null;
+  lastSyncAt?: number | null;
+  syncError?: string | null;
+}
+
+function formatSyncTime(ts: number): string {
+  const d = new Date(ts);
+  return d.toLocaleString();
 }
 
 export const AccountSyncScreen: React.FC<AccountSyncScreenProps> = ({
@@ -26,7 +35,10 @@ export const AccountSyncScreen: React.FC<AccountSyncScreenProps> = ({
   onDisconnect,
   clientId,
   onUpdateClientId,
-  onConnectWithToken
+  onConnectWithToken,
+  syncReport,
+  lastSyncAt,
+  syncError
 }) => {
   const [copiedDevUri, setCopiedDevUri] = useState(false);
   const [copiedSharedUri, setCopiedSharedUri] = useState(false);
@@ -200,6 +212,24 @@ export const AccountSyncScreen: React.FC<AccountSyncScreenProps> = ({
       {/* WHEN NOT CONNECTED: PROMINENT OAUTH SETUP & REDIRECT URI RESOLVER */}
       {!user && (
         <div className="bg-[#1c1b1b] border border-amber-500/30 rounded-2xl p-5 shadow-2xl space-y-4">
+          {/* Recommended: server-side session (refresh token never touches the browser) */}
+          <button
+            type="button"
+            onClick={() => SpotifyAuthService.bffLogin()}
+            className="w-full py-3 rounded-xl bg-[#53e076] hover:bg-[#1db954] text-[#003914] font-black text-sm flex items-center justify-center gap-2 shadow-xl transition-transform active:scale-95"
+          >
+            <span className="material-symbols-outlined text-xl">lock</span>
+            <span>Connect Spotify (recommended)</span>
+          </button>
+          <p className="text-[11px] text-[#c6c6c7] leading-relaxed">
+            Signs in through the Soundscape server: the refresh token stays server-side in an
+            encrypted session and the browser only ever holds a short-lived access token in memory.
+          </p>
+          <div className="border-t border-white/5 pt-3">
+            <p className="text-[11px] font-bold text-[#c6c6c7] uppercase tracking-wider mb-1">
+              Advanced: manual client setup
+            </p>
+          </div>
           {/* Header Callout for the Exact Screenshot Error */}
           <div className="flex items-start gap-3">
             <div className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-500/30 text-amber-400 flex items-center justify-center flex-shrink-0 mt-0.5">
@@ -236,8 +266,9 @@ export const AccountSyncScreen: React.FC<AccountSyncScreenProps> = ({
                   ? 'bg-[#2a2a2a] text-[#53e076] shadow-sm'
                   : 'text-[#c6c6c7] hover:text-white'
               }`}
+              title="Development fallback only — pastes a short-lived token into local storage"
             >
-              2. Quick Token Connect
+              2. Quick Token (dev only)
             </button>
           </div>
 
@@ -401,9 +432,49 @@ export const AccountSyncScreen: React.FC<AccountSyncScreenProps> = ({
             Library Synchronization
           </h3>
           <span className={`text-xs font-mono font-bold ${user ? 'text-[#53e076]' : 'text-amber-400'}`}>
-            {user ? '100% Synchronized' : '0% - Authentication Required'}
+            {user ? (isSyncing ? 'Syncing…' : 'Connected') : 'Not connected'}
           </span>
         </div>
+
+        {/* Last sync result: true DB-diff counters, never a fake animation */}
+        {user && (
+          <div className="p-3 bg-[#131313] rounded-xl border border-white/5 text-[11px] space-y-1">
+            <div className="flex items-center justify-between text-[#c6c6c7]">
+              <span className="font-semibold">Last synced</span>
+              <span className="font-mono text-[#e5e2e1]">
+                {lastSyncAt ? formatSyncTime(lastSyncAt) : 'Never'}
+              </span>
+            </div>
+            {syncReport && (
+              <>
+                <div className="flex items-center justify-between text-[#c6c6c7]">
+                  <span>Playlists</span>
+                  <span className="font-mono text-[#e5e2e1]">
+                    +{syncReport.playlistsAdded} ~{syncReport.playlistsUpdated} −{syncReport.playlistsRemoved}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-[#c6c6c7]">
+                  <span>Liked songs</span>
+                  <span className="font-mono text-[#e5e2e1]">
+                    +{syncReport.likedAdded} −{syncReport.likedRemoved} (total {syncReport.likedTotal})
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-[#c6c6c7]">
+                  <span>API requests</span>
+                  <span className="font-mono text-[#e5e2e1]">{syncReport.requests}</span>
+                </div>
+              </>
+            )}
+            {syncError && (
+              <p className="text-[#ffb4ab] leading-relaxed pt-1">Sync issue: {syncError}</p>
+            )}
+            {!navigator.onLine && (
+              <p className="text-amber-300 leading-relaxed pt-1">
+                Offline — showing cached library. Sync resumes when you reconnect.
+              </p>
+            )}
+          </div>
+        )}
 
         {/* Progress Bar */}
         <div className="h-2 w-full bg-[#131313] rounded-full overflow-hidden p-0.5 border border-white/5">
@@ -499,9 +570,9 @@ export const AccountSyncScreen: React.FC<AccountSyncScreenProps> = ({
         <div className="pt-3 border-t border-white/5 flex items-center justify-between text-[11px] text-[#c6c6c7]">
           <span className="flex items-center gap-1.5 font-medium">
             <span className={`w-2 h-2 rounded-full ${user ? 'bg-[#53e076]' : 'bg-amber-400'}`} />
-            Sync Heartbeat: {user ? 'Connected' : 'Idle'}
+            Sync: {user ? (isSyncing ? 'In progress' : 'Up to date as of last sync') : 'Idle'}
           </span>
-          <span className="font-mono">{user ? 'Latency ~28ms' : 'Awaiting Connection'}</span>
+          <span className="font-mono">{isSyncing ? 'Working…' : user ? 'Ready' : 'Awaiting Connection'}</span>
         </div>
       </div>
 
@@ -512,7 +583,10 @@ export const AccountSyncScreen: React.FC<AccountSyncScreenProps> = ({
           <span>Data Integrity & Token Governance</span>
         </div>
         <p className="leading-relaxed">
-          Soundscape uses client-side PKCE with cryptographically secure SHA-256 challenges. Tokens are preserved in local storage and refreshed automatically without exposing client credentials.
+          Soundscape signs in with OAuth 2.0 PKCE. Refresh tokens stay on the Soundscape server
+          inside an encrypted session cookie — the browser only holds a short-lived access token
+          in memory. The legacy manual-token tab below is a development fallback and stores its
+          token in local storage; prefer the recommended server sign-in above.
         </p>
       </div>
     </div>

@@ -1,0 +1,115 @@
+# Soundscape Rebuild — Progress Checklist
+
+> Updated by the implementation agent after every phase. Checked = done and verified (`tsc --noEmit` clean + manual test where noted).
+
+## M0 — Inventory & stabilization
+- [x] Read spec package (00–28) + build-critical docs (01,05,06,07,09,10,24,26,28)
+- [x] Real repo inventory (package.json, server.ts, src/**, services, components)
+- [x] Baseline `tsc --noEmit` clean
+
+## M1 — Security hotfix (doc 03 issues 1–3, doc 21)
+- [x] XSS-hardened `/auth/callback` (JSON-embedded params, no inline reflection)
+- [x] `postMessage` origin-locked (was `'*'`)
+- [x] Server-derived `redirect_uri` enforced (was client-supplied)
+- [x] Removed hardcoded client-ID fallback from server paths (env-driven, legacy dev fallback flagged)
+- [x] Security headers (CSP, X-Content-Type-Options, Referrer-Policy, X-Frame-Options, HSTS in prod)
+- [x] Rate limiting (auth 10/min, token 60/min, AI 10/min) + 100KB body limit
+- [x] `/healthz` endpoint
+- [x] AI endpoint: honest 503/502 errors (removed fake fallback tracks)
+
+## M2 — BFF session auth (refresh token never in browser)
+- [x] Server session vault (AES-256-GCM refresh storage, httpOnly SameSite=Lax cookie)
+- [x] `GET /auth/spotify/login` + `GET /auth/spotify/callback` (server-side PKCE)
+- [x] `GET /api/auth/status`, `GET /api/auth/token` (short-lived, no-store), `POST /api/auth/logout` (CSRF-checked)
+- [x] Frontend prefers BFF session, keeps legacy localStorage flow as fallback
+- [x] Manual token paste labeled dev-only; AccountSync honest sync/security copy
+- [ ] E2E: login → status connected → token → logout destroys session (needs live Spotify credentials)
+
+## M3 — Core + provider architecture + local DB
+- [x] `src/core/providers/types.ts` (Capability, CapabilityError, contracts)
+- [x] `src/core/providers/registry.ts`
+- [x] `src/core/providers/spotify/capabilities.ts` (honest matrix)
+- [x] `src/core/db/database.ts` (IndexedDB schema v1: track/playlist/playlist_track/saved_track/sync_state/listening_event/lyrics/kv)
+- [x] `src/core/playback/QueueManager.ts` (shuffle/repeat/play-next/history)
+- [x] `src/core/playback/PlayerController.ts` (phase machine: playing only on real position advance)
+- [x] `src/core/sync/SyncEngine.ts` (paged sync, quick-check, per-playlist checkpoint)
+- [x] `src/core/lyrics/lyricsEngine.ts` (LRCLIB, synced/plain/unavailable/error)
+- [x] `src/core/stats/listeningEvents.ts` (real-playback-only events)
+- [x] Providers registered at startup; truthfulness wired into audio service (command ladder in Diagnostics)
+- [x] PlayerController driven by real adapter events (SDK state_changed, /me/player polls, audio element events)
+
+## M4 — Spotify library + sync UI (REAL_LIBRARY)
+- [x] `syncWithSpotify` replaced by SyncEngine (paged playlists/items/liked, quick-check ≤3 req resync)
+- [x] Sync report UI (added/removed/updated, liked +/−, errors, time, trigger)
+- [x] Last-synced timestamps + stale banner (>24h) + offline guard + cache hydration
+- [x] Non-owned playlists honest unavailable state with "Play on Spotify" link
+- [x] Playlist save write-through (Spotify first); fake download toggle removed
+- [x] Library write endpoints on current `/me/library` API with legacy fallback
+
+## M5 — Playback truthfulness (NEW_PLAYER)
+- [x] `isPlaying` only on confirmed adapter playback (SDK events, /me/player polls, audio events)
+- [x] End-detection advances queue (SDK previous_tracks/position, Connect polls, preview ended)
+- [x] Premium vs Free honest states; no-device picker flow (existing, kept + controller error codes)
+- [x] MediaSession metadata + handlers (play/pause/next/prev/seekto)
+- [x] Listening events recorded from confirmed playback only (stats consume these)
+
+## M6 — Fake-removal sweep (CI no-mock grep)
+- [x] AiDjModal: resolve AI text via Spotify search; unresolved = text-only, never playable
+- [x] SearchScreen: real search history (was hardcoded names)
+- [x] DeviceConnectModal: Jam marked coming-soon (was fake toggle)
+- [x] AudioSettings honest: real storage figures, DSP toggles Planned/disabled, quality disclaimer
+- [x] Fake Espresso lyrics removed; fake download toggle removed; fake latency/100% claims removed
+- [x] temp_apk dead tree deleted; no-mock grep clean (only input placeholders + anti-fake comments)
+
+## M7 — Lyrics UI
+- [x] LyricsModal (loading/synced-scroll + highlight/plain/unavailable/error, LRCLIB cached in DB)
+- [x] Fake hardcoded Espresso lyrics removed from FullPlayerModal; entry opens real lyrics
+- [x] ±200ms tolerance in activeLine; offset control deferred to provider capability (LRCLIB has none)
+
+## M8 — Local files + Subsonic (where configured)
+- [x] Local file import (File API picker in Library) + real `<audio>` playback with seek/volume/queue
+- [x] AudioSettings honest: real storage figures, DSP toggles labeled Planned/disabled, quality preference disclaimer
+- [x] Subsonic/Navidrome/Jellyfin: explicit user-owned-server config + real ping test (session storage); library/streaming planned, nothing faked
+- [x] Real 3-band EQ (lowshelf/peaking/highshelf) + RMS-measured normalization for local files, with settings UI
+- [ ] Crossfade/gapless (deferred: needs lookahead queue player; honestly not claimed anywhere)
+
+## M9 — Stats UI
+- [x] Top tracks / listening time from real events only (range filter, honest empty state)
+- [x] Listening-history export (JSON) + delete
+- [x] StatsScreen wired to BottomNav tab
+
+## M10 — AI hardening
+- [x] AI recommendations resolved to playable Spotify URIs or labeled text-only (search limit 3, under Dev Mode cap)
+- [x] Rate-limit (10/min), key-missing 503, malformed-response guards on client + server
+- [x] No fake fallback tracks; Gemini key stays server-side
+
+## PIVOT — Provider redesign (Option A chosen 2026-10-05)
+- [x] Research legitimate full-track providers (Audius, Jamendo, Archive, Radio, SoundCloud, Apple, TIDAL, Deezer, Napster, YouTube)
+- [x] Findings written to soundscape-docs/29_PROVIDER_RESEARCH_AND_DECISION.md
+- [x] OWNER DECISION: Option A (open catalog)
+- [x] 06 + 26 amended (tiers, Option A order)
+- [x] P-A Audius: client (search/trending/official stream), registry, federated search section, trending shelf, playOpenTrack routing — VERIFIED LIVE (search + audio/mpeg stream)
+- [x] Spotify demotion: preview fallback REMOVED everywhere (player, labels, diagnostics); honest free-catalogue guidance
+- [x] Removed dead removed-endpoint calls (Spotify browse/new-releases shelves → Audius trending)
+- [ ] P-B Jamendo (needs owner's free client_id from devportal.jamendo.com) + FLAC preference
+- [x] P-C Internet Archive provider (etree + netlabels search, per-track resolve with VBR-MP3-first preference, Play-set queues rest) — VERIFIED LIVE
+- [x] P-D Radio Browser mode (search/top/tags, HTTPS non-HLS filter, click etiquette, Radio tab) — VERIFIED LIVE
+- [x] README rewritten for Option A
+- [x] FULL PASS: tsc clean, production build green (66 modules, 441KB/116KB gzip), no-mock grep clean, server smoke green (healthz/config/status/CSP)
+
+## M11+ — Social / Devices / Perf / Release- [x] Social deferred with clean placeholder (Listen Together coming-soon, no fake sessions)
+- [x] Device control is real Spotify Connect transfer (existing path kept, volume via API)
+- [x] Perf: production build passes (421KB JS / 110KB gzip, zero new heavy deps); CSP headers live-verified
+- [x] README documents Dev Mode limits, capability matrix, security model, privacy, attribution, limitations
+- [x] License review: no reference-app code copied, no YouTube extraction, no GPL deps (only MIT/Apache: react, vite, tailwind, express, lucide, motion, @google/genai)
+- [ ] Full Definition of Done (doc 28) sign-off — blocked only on live-credential checks below
+
+## Blocked on live Spotify credentials (implemented + failure-path tested, needs a real account)
+- [ ] M2 E2E: login → status connected → token → logout destroys session
+- [ ] M4/M5 live pass: real playlist sync counts + audible SDK playback on Premium desktop Chrome
+- How to clear: set SPOTIFY_CLIENT_ID + REDIRECT_URI, `npm run dev`, Connect Spotify, Sync Now, play a track.
+
+## Working commands
+- `npx tsc --noEmit` — typecheck (currently clean)
+- `npm run dev` — dev server (`tsx server.ts`, port 3000)
+- `npm run build` — production build

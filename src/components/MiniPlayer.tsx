@@ -71,9 +71,17 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({
                   E
                 </span>
               )}
-              {playbackMode === 'preview' && (
-                <span className="px-1.5 py-0.5 text-[8px] font-extrabold bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded uppercase tracking-wider flex-shrink-0">
-                  30s Preview
+              {(playbackMode === 'audius' ||
+                playbackMode === 'jamendo' ||
+                playbackMode === 'archive' ||
+                playbackMode === 'radio' ||
+                playbackMode === 'local') && (
+                <span className="px-1.5 py-0.5 text-[8px] font-extrabold bg-[#53e076]/20 text-[#53e076] border border-[#53e076]/30 rounded uppercase tracking-wider flex-shrink-0">
+                  {playbackMode === 'local'
+                    ? 'On device'
+                    : playbackMode === 'radio'
+                    ? 'Live'
+                    : 'Free catalogue'}
                 </span>
               )}
             </div>

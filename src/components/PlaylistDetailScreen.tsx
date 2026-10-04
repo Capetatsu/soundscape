@@ -29,12 +29,14 @@ export const PlaylistDetailScreen: React.FC<PlaylistDetailScreenProps> = ({
 }) => {
   const [tracks, setTracks] = useState<SpotifyTrack[]>(initialTracks);
   const [isLoading, setIsLoading] = useState(false);
-  const [isDownloaded, setIsDownloaded] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [isSaved, setIsSaved] = useState(playlist.isSaved ?? true);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // If initialTracks is empty and it's not liked-songs, fetch real playlist tracks from Spotify
   useEffect(() => {
     let isMounted = true;
+    setLoadError(null);
     if (initialTracks.length > 0) {
       setTracks(initialTracks);
     } else if (playlist.id && playlist.id !== 'liked-songs') {
@@ -50,6 +52,14 @@ export const PlaylistDetailScreen: React.FC<PlaylistDetailScreenProps> = ({
         })
         .catch((err) => {
           console.warn('Could not load playlist tracks:', err);
+          if (isMounted) {
+            const msg = err instanceof Error ? err.message : 'Failed to load tracks';
+            setLoadError(
+              /403/.test(msg)
+                ? 'Spotify only shares track lists for playlists you own or collaborate on. Open it in Spotify instead.'
+                : `Could not load tracks (${msg}). Try again or open it in Spotify.`
+            );
+          }
         })
         .finally(() => {
           if (isMounted) setIsLoading(false);
@@ -62,6 +72,25 @@ export const PlaylistDetailScreen: React.FC<PlaylistDetailScreenProps> = ({
       isMounted = false;
     };
   }, [playlist.id, initialTracks]);
+
+  // Write-through save/unsave (Spotify first, local state only on success).
+  const handleToggleSave = async () => {
+    if (playlist.id === 'liked-songs') {
+      setIsSaved(!isSaved);
+      return;
+    }
+    const next = !isSaved;
+    setSaveError(null);
+    try {
+      const ok = next
+        ? await SpotifyApiClient.followPlaylist(playlist.id)
+        : await SpotifyApiClient.unfollowPlaylist(playlist.id);
+      if (!ok) throw new Error('Spotify rejected the request');
+      setIsSaved(next);
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : 'Save failed');
+    }
+  };
 
   const formatDuration = (ms: number) => {
     const mins = Math.floor(ms / 60000);
@@ -131,25 +160,24 @@ export const PlaylistDetailScreen: React.FC<PlaylistDetailScreenProps> = ({
       <div className="px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-4">
           <button
-            onClick={() => setIsSaved(!isSaved)}
+            onClick={handleToggleSave}
             className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${
               isSaved ? 'text-[#53e076]' : 'text-[#c6c6c7] hover:text-white'
             }`}
-            title={isSaved ? 'Saved to library' : 'Save playlist'}
+            title={isSaved ? 'Following in your library' : 'Follow playlist'}
           >
             <span className={`material-symbols-outlined text-2xl ${isSaved ? 'fill-1' : ''}`}>
               favorite
             </span>
           </button>
 
+          {/* Spotify audio cannot be downloaded — honest disabled state, never a fake toggle */}
           <button
-            onClick={() => setIsDownloaded(!isDownloaded)}
-            className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${
-              isDownloaded ? 'text-[#53e076]' : 'text-[#c6c6c7] hover:text-white'
-            }`}
-            title={isDownloaded ? 'Downloaded offline' : 'Download for offline playback'}
+            disabled
+            className="w-10 h-10 rounded-full flex items-center justify-center text-[#c6c6c7]/40 cursor-not-allowed"
+            title="Downloads are not available for Spotify tracks (Spotify policy). Local files play offline."
           >
-            <span className={`material-symbols-outlined text-2xl ${isDownloaded ? 'fill-1' : ''}`}>
+            <span className="material-symbols-outlined text-2xl">
               download_for_offline
             </span>
           </button>
@@ -193,8 +221,30 @@ export const PlaylistDetailScreen: React.FC<PlaylistDetailScreenProps> = ({
         </div>
       )}
 
+      {/* Honest failure state (e.g. non-owned playlist under Dev Mode) */}
+      {!isLoading && loadError && tracks.length === 0 && (
+        <div className="py-12 text-center text-[#c6c6c7] px-6 space-y-3">
+          <span className="material-symbols-outlined text-4xl mb-2 text-amber-400">lock</span>
+          <p className="text-sm font-bold text-[#e5e2e1]">Track list unavailable</p>
+          <p className="text-xs mt-1 max-w-md mx-auto">{loadError}</p>
+          <a
+            href={`https://open.spotify.com/playlist/${playlist.id}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-block px-4 py-2 rounded-xl bg-[#53e076] text-[#003914] text-xs font-bold"
+          >
+            Play on Spotify
+          </a>
+        </div>
+      )}
+
+      {/* Save failure note */}
+      {saveError && (
+        <p className="px-6 pb-2 text-[11px] text-[#ffb4ab]">Could not update library: {saveError}</p>
+      )}
+
       {/* Empty playlist state */}
-      {!isLoading && tracks.length === 0 && (
+      {!isLoading && !loadError && tracks.length === 0 && (
         <div className="py-12 text-center text-[#c6c6c7] px-6">
           <span className="material-symbols-outlined text-4xl mb-2 text-[#53e076]">music_off</span>
           <p className="text-sm font-bold text-[#e5e2e1]">No tracks in this playlist yet</p>
