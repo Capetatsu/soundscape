@@ -24,6 +24,16 @@ export const LyricsModal: React.FC<LyricsModalProps> = ({ isOpen, onClose, track
   const [view, setView] = useState<View>({ kind: 'loading' });
   const [lyricSource, setLyricSource] = useState<string>('LRCLIB');
   const activeRef = useRef<HTMLParagraphElement | null>(null);
+  const [follow, setFollow] = useState(true);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isOpen, onClose]);
 
   useEffect(() => {
     if (!isOpen || !track) return;
@@ -91,7 +101,7 @@ export const LyricsModal: React.FC<LyricsModalProps> = ({ isOpen, onClose, track
   }, [isOpen, track?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    activeRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    if (follow) activeRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
   });
 
   if (!isOpen) return null;
@@ -116,6 +126,17 @@ export const LyricsModal: React.FC<LyricsModalProps> = ({ isOpen, onClose, track
             <span className="material-symbols-outlined text-xl">close</span>
           </button>
         </div>
+        {view.kind === 'synced' && (
+          <div className="px-5 pb-1">
+            <button
+              onClick={() => setFollow((f) => !f)}
+              className={`text-[11px] font-bold px-3 py-1 rounded-full ${follow ? 'bg-[#53e076]/20 text-[#53e076]' : 'bg-[#2a2a2a] text-[#c6c6c7]'}`}
+              title={follow ? 'Auto-scroll follows the song (click to scroll freely)' : 'Auto-scroll paused (click to resume following)'}
+            >
+              {follow ? 'Following • tap to scroll freely' : 'Paused • tap to follow'}
+            </button>
+          </div>
+        )}
         <div className="flex-1 overflow-y-auto px-5 pb-6">
           {view.kind === 'loading' && (
             <div className="py-12 flex flex-col items-center gap-3 text-[#c6c6c7]">

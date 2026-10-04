@@ -110,6 +110,7 @@ export class AudioPlayerService {
     mid: BiquadFilterNode;
     high: BiquadFilterNode;
     norm: GainNode;
+    limiter: DynamicsCompressorNode;
   } | null = null;
   private eqGains = { low: 0, mid: 0, high: 0 };
   private normalizationOn = false;
@@ -136,6 +137,22 @@ export class AudioPlayerService {
         this.notify();
       }
     });
+
+    // Buffering signals (element path): honest loading state, never fake progress.
+    this.audioEl.addEventListener('waiting', () => {
+      if (this.isElementMode() && this.isPlaying) {
+        this.playbackNotice = 'Buffering…';
+        this.notify();
+      }
+    });
+    const clearBuffering = () => {
+      if (this.playbackNotice === 'Buffering…') {
+        this.playbackNotice = null;
+        this.notify();
+      }
+    };
+    this.audioEl.addEventListener('playing', clearBuffering);
+    this.audioEl.addEventListener('canplay', clearBuffering);
 
     this.audioEl.addEventListener('ended', () => {
       if (this.isElementMode()) {

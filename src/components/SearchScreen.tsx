@@ -46,6 +46,7 @@ function audiusToUiTrack(t: AudiusTrack): SpotifyTrack {
 
 interface SearchScreenProps {
   onPlayTrack: (track: SpotifyTrack) => void;
+  onAddToQueue?: (track: SpotifyTrack) => void;
   onPlayArchiveRecording?: (rec: ArchiveRecording) => void;
   onSelectPlaylist: (playlist: SpotifyPlaylist) => void;
   onSelectAlbum: (albumId: string) => void;
@@ -57,6 +58,7 @@ interface SearchScreenProps {
 
 export const SearchScreen: React.FC<SearchScreenProps> = ({
   onPlayTrack,
+  onAddToQueue,
   onPlayArchiveRecording,
   onSelectPlaylist,
   onSelectAlbum,
@@ -443,16 +445,30 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({
                                 </p>
                               </div>
                             </div>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onPlayTrack(track);
-                              }}
-                              className="w-8 h-8 rounded-full flex items-center justify-center text-[#53e076] hover:bg-[#53e076]/10"
-                              title={`Play full track (${source}, ${format})`}
-                            >
-                              <span className="material-symbols-outlined text-xl">play_arrow</span>
-                            </button>
+                            <div className="flex items-center gap-1.5 flex-shrink-0">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onPlayTrack(track);
+                                }}
+                                className="w-8 h-8 rounded-full flex items-center justify-center text-[#53e076] hover:bg-[#53e076]/10"
+                                title={`Play full track (${source}, ${format})`}
+                              >
+                                <span className="material-symbols-outlined text-xl">play_arrow</span>
+                              </button>
+                              {onAddToQueue && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onAddToQueue(track);
+                                  }}
+                                  className="w-8 h-8 rounded-full flex items-center justify-center text-[#c6c6c7] hover:text-white hover:bg-white/5"
+                                  title="Add to queue"
+                                >
+                                  <span className="material-symbols-outlined text-lg">playlist_add</span>
+                                </button>
+                              )}
+                            </div>
                           </div>
                         ))}
                       </div>

@@ -493,27 +493,66 @@ export const App: React.FC = () => {
   };
 
   const handleNext = () => {
+    if (repeatMode === 'one' && currentTrack) {
+      handlePlayTrack(currentTrack);
+      return;
+    }
+    const pool = queue.length > 0 ? queue : recentTracks.length > 0 ? recentTracks : likedSongs;
     if (queue.length > 0) {
       const nextTrack = queue[0];
       setQueue((prev) => prev.slice(1));
       handlePlayTrack(nextTrack);
-    } else if (recentTracks.length > 0) {
-      const currentIndex = recentTracks.findIndex((t) => t.id === currentTrack?.id);
-      const nextIndex = (currentIndex + 1) % recentTracks.length;
-      handlePlayTrack(recentTracks[nextIndex]);
-    } else if (likedSongs.length > 0) {
-      const currentIndex = likedSongs.findIndex((t) => t.id === currentTrack?.id);
-      const nextIndex = (currentIndex + 1) % likedSongs.length;
-      handlePlayTrack(likedSongs[nextIndex]);
+      return;
+    }
+    if (pool.length > 0) {
+      // Shuffle is real for open playback: random pick (current excluded when possible).
+      const currentIndex = pool.findIndex((t) => t.id === currentTrack?.id);
+      let nextIndex: number;
+      if (isShuffle && pool.length > 1) {
+        do {
+          nextIndex = Math.floor(Math.random() * pool.length);
+        } while (nextIndex === currentIndex);
+      } else {
+        nextIndex = (currentIndex + 1) % pool.length;
+      }
+      // repeat off + end of pool + not queue-driven: stop instead of wrapping.
+      if (repeatMode === 'off' && !isShuffle && currentIndex >= 0 && nextIndex === 0 && pool === queue) {
+        return;
+      }
+      handlePlayTrack(pool[nextIndex]);
     }
   };
 
   const handlePrevious = () => {
+    if (repeatMode === 'one' && currentTrack) {
+      handlePlayTrack(currentTrack);
+      return;
+    }
     const pool = recentTracks.length > 0 ? recentTracks : likedSongs;
     if (pool.length > 0) {
       const currentIndex = pool.findIndex((t) => t.id === currentTrack?.id);
       const prevIndex = (currentIndex - 1 + pool.length) % pool.length;
       handlePlayTrack(pool[prevIndex]);
+    }
+  };
+
+  const [muted, setMuted] = useState(false);
+  const lastVolume = useRef(0.8);
+
+  const handleVolumeChange = (vol: number) => {
+    const v = Math.max(0, Math.min(1, vol));
+    setVolume(v);
+    setMuted(v === 0);
+    if (v > 0) lastVolume.current = v;
+    audioService.setVolume(v);
+  };
+
+  const handleToggleMute = () => {
+    if (muted || volume === 0) {
+      handleVolumeChange(lastVolume.current || 0.8);
+    } else {
+      lastVolume.current = volume;
+      handleVolumeChange(0);
     }
   };
 
@@ -574,11 +613,6 @@ export const App: React.FC = () => {
       SpotifyApiClient.transferPlayback(device.id).catch(() => {});
     }
     setIsDeviceModalOpen(false);
-  };
-
-  const handleVolumeChange = (vol: number) => {
-    setVolume(vol);
-    audioService.setVolume(vol);
   };
 
   const handleDisconnect = () => {
@@ -653,6 +687,10 @@ export const App: React.FC = () => {
         {currentScreen === 'search' && (
           <SearchScreen
             onPlayTrack={handlePlayTrack}
+            onAddToQueue={(track) => {
+              setQueue((prev) => [...prev, track]);
+              setPlaybackNotice(`Queued: ${track.name}`);
+            }}
             onPlayArchiveRecording={handlePlayArchiveRecording}
             onSelectPlaylist={handleSelectPlaylist}
             onSelectAlbum={handleSelectAlbum}
@@ -832,6 +870,10 @@ export const App: React.FC = () => {
         onOpenDeviceModal={() => setIsDeviceModalOpen(true)}
         onOpenQueue={() => setIsQueueOpen(true)}
         onOpenLyrics={() => setIsLyricsOpen(true)}
+        volume={volume}
+        muted={muted}
+        onVolumeChange={handleVolumeChange}
+        onToggleMute={handleToggleMute}
         onSelectAlbum={handleSelectAlbum}
         onSelectArtist={handleSelectArtist}
       />

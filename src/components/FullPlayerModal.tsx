@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { SpotifyTrack, SpotifyDevice } from '../types';
 
 interface FullPlayerModalProps {
@@ -25,6 +25,10 @@ interface FullPlayerModalProps {
   onOpenDeviceModal: () => void;
   onOpenQueue: () => void;
   onOpenLyrics?: () => void;
+  volume?: number;
+  muted?: boolean;
+  onVolumeChange?: (vol: number) => void;
+  onToggleMute?: () => void;
   onSelectAlbum?: (albumId: string) => void;
   onSelectArtist?: (artistId: string) => void;
 }
@@ -53,12 +57,25 @@ export const FullPlayerModal: React.FC<FullPlayerModalProps> = ({
   onOpenDeviceModal,
   onOpenQueue,
   onOpenLyrics,
+  volume = 0.8,
+  muted = false,
+  onVolumeChange,
+  onToggleMute,
   onSelectAlbum,
   onSelectArtist
 }) => {
   const [isScrubbing, setIsScrubbing] = useState(false);
   const [scrubValue, setScrubValue] = useState(0);
   const [copiedLink, setCopiedLink] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isOpen, onClose]);
 
   if (!isOpen || !currentTrack) return null;
 
@@ -337,6 +354,35 @@ export const FullPlayerModal: React.FC<FullPlayerModalProps> = ({
               <span className="absolute bottom-1 w-1 h-1 rounded-full bg-[#53e076]" />
             )}
           </button>
+        </div>
+
+        {/* Volume Row */}
+        <div className="w-full mt-3 flex items-center gap-3">
+          <button
+            id="fullplayer-mute-btn"
+            onClick={onToggleMute}
+            className="w-9 h-9 rounded-full flex items-center justify-center text-[#c6c6c7] hover:text-[#e5e2e1] hover:bg-white/10"
+            title={muted || volume === 0 ? 'Unmute' : 'Mute'}
+            aria-label={muted || volume === 0 ? 'Unmute' : 'Mute'}
+          >
+            <span className="material-symbols-outlined text-xl">
+              {muted || volume === 0 ? 'volume_off' : volume < 0.5 ? 'volume_down' : 'volume_up'}
+            </span>
+          </button>
+          <input
+            id="fullplayer-volume"
+            type="range"
+            min={0}
+            max={1}
+            step={0.01}
+            value={muted ? 0 : volume}
+            onChange={(e) => onVolumeChange?.(Number(e.target.value))}
+            className="flex-1 h-1.5 accent-[#53e076]"
+            aria-label="Volume"
+          />
+          <span className="text-[11px] font-mono text-[#c6c6c7] w-9 text-right">
+            {Math.round((muted ? 0 : volume) * 100)}%
+          </span>
         </div>
 
         {/* Connect Device Pill & Bottom Bar */}
