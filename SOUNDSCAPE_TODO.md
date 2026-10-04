@@ -104,6 +104,21 @@
 - [x] License review: no reference-app code copied, no YouTube extraction, no GPL deps (only MIT/Apache: react, vite, tailwind, express, lucide, motion, @google/genai)
 - [ ] Full Definition of Done (doc 28) sign-off — blocked only on live-credential checks below
 
+## AUDIT — end-to-end verification (headless Chromium, fresh profile, no Spotify)
+- [x] App boots with zero console errors on desktop + mobile (fixed: dev CSP blocked Vite; SDK hook undefined)
+- [x] Audius search/trending/play/pause/seek(drag)/MediaSession/position-advance — real audio verified
+- [x] Archive search/Play-set/queue/next-track-advance — verified
+- [x] Radio search/top/tags/play/pause, HTTPS-only + non-HLS filter — verified
+- [x] Local MP3/OGG/FLAC/WAV upload + playback + honest end-of-file — verified with real fixtures
+- [x] EQ persists, normalization toggles + persists — verified with trusted events
+- [x] Lyrics honest unavailable path, stats accumulate from real playback — verified
+- [x] Queue drawer Escape/backdrop close added (was X-only)
+- [x] Stats show real track names for open-catalogue plays (persist element-playback metadata)
+- [x] Artwork dead-host fallback (ArtworkImg) after finding unreachable Audius creator node
+- [x] frame-src allows official Spotify SDK iframe (its EME/DRM frame is legitimate)
+- [x] Product copy de-Spotified (logo, home, settings, diagnostics self-test URI schemes)
+- [x] Committed: 3 logical commits on main
+
 ## Blocked on live Spotify credentials (implemented + failure-path tested, needs a real account)
 - [ ] M2 E2E: login → status connected → token → logout destroys session
 - [ ] M4/M5 live pass: real playlist sync counts + audible SDK playback on Premium desktop Chrome
