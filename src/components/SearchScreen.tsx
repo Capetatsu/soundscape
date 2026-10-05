@@ -185,73 +185,94 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({
     }
 
     let cancelled = false;
-    const timer = setTimeout(async () => {
-      setIsSearching(true);
+    const timer = setTimeout(() => {
       recordSearch(query);
-      // Free catalogue first: works without any account, full-length tracks.
-      try {
-        const open = await audiusSearchTracks(query, 10);
-        if (!cancelled) {
+      setIsSearching(true);
+
+      // Every provider is queried CONCURRENTLY and each section renders as soon as its own
+      // source answers. Previously these were awaited one after another, which meant the
+      // authoritative Spotify entities only appeared after three open-catalogue round trips.
+      // A slow or dead open provider can no longer delay Spotify results.
+      let pending = 0;
+      const settle = () => {
+        pending -= 1;
+        if (!cancelled && pending <= 0) setIsSearching(false);
+      };
+      const section = <T,>(promise: Promise<T>, onOk: (value: T) => void, onErr: () => void) => {
+        pending += 1;
+        promise
+          .then((value) => {
+            if (!cancelled) onOk(value);
+          })
+          .catch(() => {
+            if (!cancelled) onErr();
+          })
+          .finally(settle);
+      };
+
+      // Free catalogue: works without any account, full-length tracks.
+      section(
+        audiusSearchTracks(query, 10),
+        (open) => {
           setAudiusTracks(open.map(audiusToUiTrack));
           setHasMoreAudius(open.length === 10);
           setAudiusFailed(false);
-        }
-      } catch {
-        if (!cancelled) {
+        },
+        () => {
           setAudiusTracks([]);
           setHasMoreAudius(false);
           setAudiusFailed(true);
         }
-      }
+      );
+
       // Archive recordings: live concerts + netlabels, no account either.
-      try {
-        const recs = await archiveSearchRecordings(query, 6);
-        if (!cancelled) {
+      section(
+        archiveSearchRecordings(query, 6),
+        (recs) => {
           setArchiveRecs(recs);
           setArchiveFailed(false);
-        }
-      } catch {
-        if (!cancelled) {
+        },
+        () => {
           setArchiveRecs([]);
           setArchiveFailed(true);
         }
-      }
+      );
+
       // Jamendo: only when configured — otherwise the provider stays off, honestly.
       if (jamendoConfigured()) {
-        try {
-          const jt = await jamendoSearchTracks(query, 10);
-          if (!cancelled) {
+        section(
+          jamendoSearchTracks(query, 10),
+          (jt) => {
             setJamendoTracks(jt.map((t) => ({ track: jamendoToUiTrack(t), format: jamendoQualityLabel(t) })));
             setHasMoreJamendo(jt.length === 10);
-          }
-        } catch {
-          if (!cancelled) {
+          },
+          () => {
             setJamendoTracks([]);
             setHasMoreJamendo(false);
           }
-        }
-      } else if (!cancelled) {
+        );
+      } else {
         setJamendoTracks([]);
         setHasMoreJamendo(false);
       }
+
+      // Spotify is the commercial catalogue: when connected it is the primary answer.
       if (isAuthenticated) {
-        try {
-          const res = await SpotifyApiClient.search(query, 'track,artist,album,playlist', 10);
-          if (!cancelled) {
+        section(
+          SpotifyApiClient.search(query, 'track,artist,album,playlist', 10),
+          (res) => {
             setSearchResults({
               tracks: res.tracks?.items || [],
               artists: res.artists?.items || [],
               albums: res.albums?.items || [],
               playlists: res.playlists?.items?.filter(Boolean) || []
             });
-          }
-        } catch {
-          if (!cancelled) performLocalSearch(query);
-        }
+          },
+          () => performLocalSearch(query)
+        );
       } else {
         performLocalSearch(query);
       }
-      if (!cancelled) setIsSearching(false);
     }, 300);
 
     return () => {

@@ -41,6 +41,29 @@ import { StatsScreen } from './components/StatsScreen';
 import { RadioScreen } from './components/RadioScreen';
 import { radioCountClick, type RadioStation } from './core/providers/radio/radioClient';
 
+/**
+ * Turn an `?auth_error=<code>` value from the server callback into a message a person can act
+ * on. Never swallowed, never a generic "something went wrong".
+ */
+const describeAuthError = (code: string): string => {
+  switch (code) {
+    case 'access_denied':
+      return 'Spotify sign-in was cancelled or denied. No changes were made to your account.';
+    case 'exchange_failed':
+      return 'Spotify rejected the authorization code. This usually means the redirect URI registered in your Spotify Developer Dashboard does not match this app exactly.';
+    case 'invalid_state':
+      return 'The Spotify sign-in could not be verified (state mismatch). Please start the connection again.';
+    case 'expired':
+      return 'The Spotify sign-in took too long and was discarded. Please start the connection again.';
+    case 'missing_params':
+      return 'Spotify returned an incomplete response. Please start the connection again.';
+    case 'server_error':
+      return 'Soundscape could not complete the Spotify token exchange. Please try again.';
+    default:
+      return `Spotify sign-in failed (${code}). Please try again.`;
+  }
+};
+
 export const App: React.FC = () => {
   const [currentScreen, setCurrentScreen] = useState<ActiveScreen>('home');
   const [user, setUser] = useState<SpotifyUser | null>(null);
@@ -77,6 +100,10 @@ export const App: React.FC = () => {
   const [isLyricsOpen, setIsLyricsOpen] = useState(false);
   const [playlistTarget, setPlaylistTarget] = useState<SpotifyTrack | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
+  // Authoritative BFF session state. `user` alone is not enough: /me can fail (for example if
+  // the granted token is missing user-read-private) while the session itself is perfectly valid,
+  // and reporting that as "Disconnected" hides the real problem.
+  const [authState, setAuthState] = useState<'unknown' | 'connected' | 'revoked' | 'none'>('unknown');
 
   // Real sync state (M4): report with true DB-diff counters + last-sync timestamps.
   const [syncReport, setSyncReport] = useState<SyncReport | null>(null);
@@ -243,7 +270,8 @@ export const App: React.FC = () => {
     }
   }, []);
 
-  // Check saved session on mount & listen to popup postMessage
+  // Restore the cached profile for instant paint. The authoritative connection state
+  // always comes from the BFF session probe below — never from localStorage.
   useEffect(() => {
     const savedUser = localStorage.getItem('soundscape_user_profile');
     if (savedUser) {
@@ -251,77 +279,73 @@ export const App: React.FC = () => {
         setUser(JSON.parse(savedUser));
       } catch {}
     }
+  }, []);
 
-    if (SpotifyAuthService.isAuthenticated()) {
-      syncWithSpotify();
-    }
-
-    // Handle OAuth Callback popup communication (origin-locked; callback posts to app origin only)
-    const handleOAuthMessage = async (event: MessageEvent) => {
-      if (event.origin !== window.location.origin) return;
-      if (event.data?.type === 'SPOTIFY_AUTH_CODE') {
-        const { code, error } = event.data;
-        if (code) {
-          try {
-            setIsSyncing(true);
-            const success = await SpotifyAuthService.exchangeCode(code);
-            if (success) {
-              await syncWithSpotify();
-              setCurrentScreen('account_sync');
-            }
-          } catch (e) {
-            console.error('Code exchange failed:', e);
-            setPlaybackNotice('Spotify authorization failed. Please verify Client ID and redirect URI.');
-          } finally {
-            setIsSyncing(false);
-          }
-        } else if (error) {
-          console.warn('Spotify auth returned error:', error);
-        }
-      }
-    };
-
-    window.addEventListener('message', handleOAuthMessage);
-    return () => window.removeEventListener('message', handleOAuthMessage);
-  }, [syncWithSpotify]);
-
-  // Handle direct navigation code (if opened without popup)
-  // + BFF session init (server-held refresh token preferred over legacy localStorage).
+  // BFF OAuth return handling. This is the ONLY place a Spotify session can be established:
+  // the server owns PKCE + token exchange and hands back an HttpOnly session cookie, then
+  // redirects here with ?auth_success=1 or ?auth_error=<code>.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get('auth_success') === '1') {
-      window.history.replaceState({}, document.title, window.location.pathname);
+    const authSuccess = params.get('auth_success');
+    const authError = params.get('auth_error');
+    // Legacy popup code exchange is gone: the BFF callback owns the code. If a stray
+    // ?code= arrives, drop it rather than re-running a client-side exchange.
+    const strayCode = params.get('code');
+
+    if (!authSuccess && !authError && !strayCode) {
+      // Returning visitor with a valid HttpOnly cookie: probe the BFF session.
       SpotifyAuthService.initBffSession().then((state) => {
-        if (state === 'connected') {
-          syncWithSpotify();
-          setCurrentScreen('account_sync');
+        setAuthState(state === 'legacy' ? 'connected' : state);
+        if (state === 'connected' || state === 'legacy') {
+          syncWithSpotify('startup');
         }
       });
       return;
     }
-    if (params.get('auth_error')) {
-      window.history.replaceState({}, document.title, window.location.pathname);
-      setPlaybackNotice('Spotify sign-in failed. Please try again.');
+
+    // Strip the one-shot query so a reload never replays the transition.
+    window.history.replaceState({}, document.title, window.location.pathname);
+
+    if (authError) {
+      setCurrentScreen('account_sync');
+      setPlaybackNotice(describeAuthError(authError));
       return;
     }
-    const code = params.get('code');
-    if (code) {
-      window.history.replaceState({}, document.title, window.location.pathname);
-      SpotifyAuthService.exchangeCode(code)
-        .then((success) => {
-          if (success) {
-            syncWithSpotify();
-            setCurrentScreen('account_sync');
-          }
-        })
-        .catch((e) => console.error('Error exchanging direct code', e));
-      return;
-    }
-    // Returning BFF session (page reload with valid HttpOnly cookie).
-    SpotifyAuthService.initBffSession().then((state) => {
-      if (state === 'connected' || state === 'legacy') {
-        syncWithSpotify('startup');
+
+    // Authorize succeeded server-side. Bound the wait so a cookie the browser refused
+    // (or a dropped session) surfaces as an honest error instead of an endless spinner.
+    let settled = false;
+    let guard = 0;
+    const finish = (message?: string) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(guard);
+      setIsSyncing(false);
+      setCurrentScreen('account_sync');
+      if (message) setPlaybackNotice(message);
+    };
+
+    setIsSyncing(true);
+    guard = window.setTimeout(
+      () =>
+        finish(
+          'Spotify authorized, but the session could not be established. Check that your browser accepted the session cookie, then try again.'
+        ),
+      15000
+    );
+
+    void SpotifyAuthService.initBffSession().then(async (state) => {
+      setAuthState(state === 'legacy' ? 'connected' : state);
+      if (state === 'connected') {
+        finish();
+        await syncWithSpotify();
+        return;
       }
+      if (state === 'revoked') {
+        finish('Spotify revoked this session. Please connect again.');
+        return;
+      }
+      finish('Spotify sign-in did not complete a session. Please try connecting again.');
     });
   }, [syncWithSpotify]);
 
@@ -868,7 +892,7 @@ export const App: React.FC = () => {
             likedSongsCount={likedSongs.length}
             isSyncing={isSyncing}
             onTriggerSync={syncWithSpotify}
-            onConnectSpotify={() => SpotifyAuthService.initiateAuth()}
+            onConnectSpotify={() => SpotifyAuthService.bffLogin()}
             onDisconnect={handleDisconnect}
             clientId={clientId}
             onUpdateClientId={(newId) => {
@@ -879,6 +903,7 @@ export const App: React.FC = () => {
             syncReport={syncReport}
             lastSyncAt={lastSyncAt}
             syncError={syncError}
+            authState={authState}
           />
         )}
 

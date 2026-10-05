@@ -18,6 +18,7 @@ interface AccountSyncScreenProps {
   syncReport?: SyncReport | null;
   lastSyncAt?: number | null;
   syncError?: string | null;
+  authState?: 'unknown' | 'connected' | 'revoked' | 'none';
 }
 
 function formatSyncTime(ts: number): string {
@@ -38,24 +39,42 @@ export const AccountSyncScreen: React.FC<AccountSyncScreenProps> = ({
   onConnectWithToken,
   syncReport,
   lastSyncAt,
-  syncError
+  syncError,
+  authState = 'unknown'
 }) => {
+  // The session cookie is the source of truth for "connected"; `user` only proves that the
+  // profile call also succeeded. Reporting on `user` alone made a valid session look
+  // disconnected whenever /me failed, hiding the actual reason.
+  const sessionConnected = authState === 'connected';
+  const connected = !!user || sessionConnected;
+  const profileUnavailable = sessionConnected && !user;
   const [copiedDevUri, setCopiedDevUri] = useState(false);
   const [copiedSharedUri, setCopiedSharedUri] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [customClientId, setCustomClientId] = useState(clientId);
   const [manualToken, setManualToken] = useState('');
   const [tokenError, setTokenError] = useState<string | null>(null);
+  const [diagnosis, setDiagnosis] = useState<Awaited<ReturnType<typeof SpotifyAuthService.diagnose>>>(null);
+  const [diagnosing, setDiagnosing] = useState(false);
   const [isConnectingToken, setIsConnectingToken] = useState(false);
   const [connectTab, setConnectTab] = useState<'oauth' | 'manual'>('oauth');
 
   // Exact callback URLs
-  const devCallbackUrl = 'http://127.0.0.1:3000/auth/callback';
-  const localhostCallbackUrl = 'http://localhost:3000/auth/callback';
+  const devCallbackUrl = 'http://127.0.0.1:3000/auth/spotify/callback';
+  const localhostCallbackUrl = 'http://localhost:3000/auth/spotify/callback';
   const sharedCallbackUrl = typeof window !== 'undefined' && !window.location.origin.includes('127.0.0.1') && !window.location.origin.includes('localhost')
-    ? `${window.location.origin}/auth/callback`
+    ? `${window.location.origin}/auth/spotify/callback`
     : REDIRECT_URI;
   const [copiedLocalhostUri, setCopiedLocalhostUri] = useState(false);
+
+  const runDiagnosis = async () => {
+    setDiagnosing(true);
+    try {
+      setDiagnosis(await SpotifyAuthService.diagnose());
+    } finally {
+      setDiagnosing(false);
+    }
+  };
 
   useEffect(() => {
     setCustomClientId(clientId);
@@ -132,7 +151,7 @@ export const AccountSyncScreen: React.FC<AccountSyncScreenProps> = ({
           </div>
         </div>
         <span className="text-[11px] font-mono text-[#c6c6c7]">
-          {user ? 'Session Active' : 'Disconnected'}
+          {connected ? 'Session Active' : authState === 'revoked' ? 'Session revoked' : 'Disconnected'}
         </span>
       </div>
 
@@ -162,7 +181,7 @@ export const AccountSyncScreen: React.FC<AccountSyncScreenProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-lg font-black text-[#e5e2e1]">
-                  {user?.display_name || 'Spotify Account'}
+                  {user?.display_name || (sessionConnected ? 'Spotify Account' : 'Not connected yet')}
                 </h2>
                 {user && (
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-[#53e076]/20 text-[#53e076] border border-[#53e076]/30 uppercase">
@@ -174,17 +193,69 @@ export const AccountSyncScreen: React.FC<AccountSyncScreenProps> = ({
                 {user?.id ? `ID: ${user.id} • ${user.country || 'Global'}` : 'Not connected yet'}
               </p>
               <p className="text-[11px] mt-1 flex items-center gap-1 font-semibold">
-                <span className={`w-2 h-2 rounded-full ${user ? 'bg-[#53e076] animate-ping' : 'bg-amber-400'}`} />
-                <span className={user ? 'text-[#53e076]' : 'text-amber-300'}>
-                  {user ? 'Real Account Linked & Synced' : 'Ready to Connect with Spotify'}
+                <span className={`w-2 h-2 rounded-full ${connected ? 'bg-[#53e076] animate-ping' : 'bg-amber-400'}`} />
+                <span className={connected ? 'text-[#53e076]' : 'text-amber-300'}>
+                  {user
+                    ? 'Real Account Linked & Synced'
+                    : sessionConnected
+                      ? 'Signed in — Spotify profile still loading'
+                      : authState === 'revoked'
+                        ? 'Spotify revoked this session'
+                        : 'Ready to Connect with Spotify'}
                 </span>
               </p>
+              {profileUnavailable && (
+                <div className="text-[11px] text-amber-300 mt-2 leading-relaxed">
+                  <p>
+                    The session cookie is valid, but Spotify would not return your profile.
+                    {syncError ? ` (${syncError})` : ''}
+                  </p>
+                  <p className="mt-1.5">
+                    Scopes actually granted by Spotify:{' '}
+                    <span className="font-mono break-all">
+                      {SpotifyAuthService.getGrantedScopes().join(' ') || 'none reported'}
+                    </span>
+                  </p>
+                  {!SpotifyAuthService.getGrantedScopes().includes('user-read-private') ? (
+                    <p className="mt-1.5">
+                      <code className="font-mono">user-read-private</code> was not granted, so the
+                      server is running an older build — restart it so the login request asks for it,
+                      then disconnect and reconnect.
+                    </p>
+                  ) : (
+                    <p className="mt-1.5">
+                      The token is valid and correctly scoped, so this is not a Soundscape fault. Use
+                      Diagnose connection below for Spotify&apos;s own explanation.
+                    </p>
+                  )}
+                  <button
+                    onClick={runDiagnosis}
+                    disabled={diagnosing}
+                    className="mt-2 px-3 py-1.5 rounded-lg bg-[#2a2a2a] hover:bg-[#353534] text-amber-200 text-[11px] font-bold disabled:opacity-50"
+                  >
+                    {diagnosing ? 'Checking Spotify…' : 'Diagnose connection'}
+                  </button>
+                  {diagnosis && (
+                    <div className="mt-2 space-y-1.5 font-mono text-[10px] leading-relaxed">
+                      {Object.entries(diagnosis.probes).map(([key, p]) => (
+                        <div key={key} className="flex gap-2">
+                          <span className={p.ok ? 'text-[#53e076]' : 'text-red-300'}>
+                            {p.label} → {p.status}
+                          </span>
+                          {!p.ok && <span className="text-[#c6c6c7] break-all">{p.body.slice(0, 160)}</span>}
+                        </div>
+                      ))}
+                      <p className="text-amber-200 font-sans">{diagnosis.verdict}</p>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
 
         <div className="mt-5 pt-4 border-t border-white/5 flex items-center gap-3">
-          {user ? (
+          {connected ? (
             <>
               <button
                 id="account-sync-now-btn"
@@ -209,18 +280,18 @@ export const AccountSyncScreen: React.FC<AccountSyncScreenProps> = ({
           ) : (
             <button
               id="account-connect-oauth-btn"
-              onClick={handleSaveAndConnect}
+              onClick={() => SpotifyAuthService.bffLogin()}
               className="w-full py-3 rounded-xl bg-[#1db954] hover:bg-[#53e076] text-[#003914] font-black text-sm flex items-center justify-center gap-2 shadow-xl transition-transform active:scale-95"
             >
               <span className="material-symbols-outlined text-xl">login</span>
-              <span>Connect Real Spotify Account</span>
+              <span>Connect Spotify (BFF)</span>
             </button>
           )}
         </div>
       </div>
 
       {/* WHEN NOT CONNECTED: PROMINENT OAUTH SETUP & REDIRECT URI RESOLVER */}
-      {!user && (
+      {!connected && (
         <div className="bg-[#1c1b1b] border border-amber-500/30 rounded-2xl p-5 shadow-2xl space-y-4">
           {/* Recommended: server-side session (refresh token never touches the browser) */}
           <button
@@ -468,7 +539,15 @@ export const AccountSyncScreen: React.FC<AccountSyncScreenProps> = ({
             Library Synchronization
           </h3>
           <span className={`text-xs font-mono font-bold ${user ? 'text-[#53e076]' : 'text-amber-400'}`}>
-            {user ? (isSyncing ? 'Syncing…' : 'Connected') : 'Not connected'}
+            {connected
+              ? isSyncing
+                ? 'Syncing…'
+                : profileUnavailable
+                  ? 'Connected — profile unavailable'
+                  : 'Connected'
+              : authState === 'revoked'
+                ? 'Session revoked'
+                : 'Not connected'}
           </span>
         </div>
 

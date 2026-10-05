@@ -36,15 +36,79 @@ Nothing here scrapes YouTube, extracts Spotify streams, or bypasses DRM.
 ## Spotify library setup (optional)
 
 1. Create an app at <https://developer.spotify.com/dashboard>.
-2. Add the exact Redirect URI: `http://127.0.0.1:3000/auth/callback`
+2. Add **exactly** this Redirect URI:
+   `http://127.0.0.1:3000/auth/spotify/callback`
    (production: `https://<your-domain>/auth/spotify/callback`).
+   Spotify compares redirect URIs literally — a trailing slash, `localhost` vs `127.0.0.1`,
+   or the old `/auth/callback` path will all fail with
+   `redirect_uri: Not matching configuration`.
 3. Set `SPOTIFY_CLIENT_ID`, `REDIRECT_URI`, and (production) `SESSION_ENCRYPTION_KEY`.
 4. Account → **Connect Spotify (recommended)**.
 
-Dev Mode limits (platform restrictions, not bugs): ≤5 users, search ≤10 items per page,
-playlist track lists only for playlists you own/collaborate on, several browse
-endpoints removed (the app doesn't call them). Soundscape's own search paginates past
-that ceiling across the free catalogues.
+### How the connection works
+
+Spotify sign-in is a **backend-for-frontend (BFF)** flow, and it is the only one:
+
+```
+Connect button
+  -> GET /auth/spotify/login        server generates state + PKCE verifier, redirects
+  -> accounts.spotify.com/authorize user approves
+  -> GET /auth/spotify/callback     server validates state, exchanges the code itself,
+                                     stores the refresh token encrypted, sets an HttpOnly
+                                     session cookie, redirects to /?auth_success=1
+  -> GET /api/auth/status           the client confirms the session and shows Connected
+```
+
+The browser never holds a refresh token and never performs a code exchange. The only
+credential it receives is a short-lived access token, kept in memory for the tab.
+
+Failure is always explicit and always returns you to the app — a cancelled or denied
+authorization, an expired or unverifiable `state`, or a rejected code produces a specific
+message instead of an endless spinner:
+
+| `?auth_error=` | Meaning |
+|---|---|
+| `access_denied` | You cancelled or denied the request |
+| `invalid_state` | The sign-in could not be verified; start again |
+| `expired` | The sign-in took too long; start again |
+| `missing_params` | Spotify returned an incomplete response |
+| `exchange_failed` | Spotify rejected the code — usually a redirect URI mismatch |
+| `server_error` | Soundscape could not complete the exchange |
+
+`/auth/callback` is retired: it forwards to `/auth/spotify/login` so an old bookmark lands
+somewhere honest. The old popup + `window.opener.postMessage` handshake was removed — with
+the exchange on the server it could never complete, which left the Connect button spinning.
+
+### What Spotify does and does not do here
+
+- **Does:** full catalogue search (artists, albums, tracks, playlists), artist pages with
+  real discographies, album pages with real track lists, playlist pages, library import,
+  and playback commands sent to your own Spotify devices.
+- **Does not:** stream Spotify audio itself unless you have a Premium account and an active
+  device. If playback is unavailable, the app says so plainly — it never substitutes an
+  unrelated Audius/Jamendo/Archive track for the track you asked for.
+- **When disconnected:** search still works across the open catalogues, each row labelled
+  with its real source. Soundscape never fabricates Spotify artists, albums, or playlists,
+  and prompts you to connect instead.
+
+### Known Spotify limitations
+
+These are platform rules, not defects:
+
+- **The app owner must have active Spotify Premium.** If the Spotify account that owns the app
+  in the Developer Dashboard is not Premium, Spotify answers *every* Web API request with
+  `403 Forbidden` and an empty body — sign-in appears to succeed and then nothing syncs.
+  After any subscription change, Spotify can take **a few hours** before requests are allowed
+  again.
+- **Premium is required for in-app audio.** Spotify Connect/Web Playback needs Premium plus an
+  active device.
+- **Development Mode:** apps only serve accounts added under **User Management**.
+- **Dev Mode ceilings:** ≤5 users, search ≤10 items per page, and playlist track lists only
+  for playlists you own or collaborate on.
+
+If sign-in succeeds but the library will not sync, press **Diagnose connection** on the
+Account & Sync screen. It asks the server to probe Spotify with the server-held token and
+prints Spotify's own explanation, so a platform restriction is never mistaken for an app bug.
 
 ## AI DJ (optional)
 
@@ -54,10 +118,11 @@ items are shown text-only and can never be played.
 
 ## Security model
 
-- Recommended Spotify flow keeps the **refresh token on the server**
-  (AES-256-GCM session vault, HttpOnly `SameSite=Lax` cookie); the browser holds
-  only a short-lived access token in memory. Legacy/manual-token flow is labeled
-  dev-only.
+- Spotify sign-in uses a single BFF path. The **refresh token stays on the server**
+  (AES-256-GCM session vault, HttpOnly `SameSite=Lax` cookie); the browser holds only a
+  short-lived access token in memory and never writes a token to storage. PKCE, `state`
+  validation, and the code exchange all happen server-side; the client secret is never sent
+  to the browser. The manual-token flow is labeled dev-only.
 - The Spotify Web Playback SDK script is injected **lazily**, only once a Spotify
   session exists — a logged-out Soundscape session loads no third-party script at all.
 - Your Subsonic/Navidrome/Jellyfin credentials stay in `sessionStorage` for the tab

@@ -21,17 +21,30 @@ const SPOTIFY_SCOPES = [
   'user-follow-modify'
 ].join(' ');
 
+/**
+ * localStorage keys an older build used to persist Spotify credentials under. The BFF flow
+ * keeps every token in memory, so these are only ever removed — never written or read.
+ */
+const LEGACY_TOKEN_KEYS = [
+  'spotify_access_token',
+  'spotify_refresh_token',
+  'spotify_token_expires_at',
+  'spotify_pkce_verifier'
+] as const;
+
 export class SpotifyAuthService {
   private static clientIdKey = 'soundscape_client_id';
-  private static tokenKey = 'spotify_access_token';
-  private static refreshTokenKey = 'spotify_refresh_token';
-  private static expiresAtKey = 'spotify_token_expires_at';
-  private static verifierKey = 'spotify_pkce_verifier';
 
   // BFF session tokens: memory-only, NEVER persisted (spec 21_SECURITY.md).
   private static memToken: string | null = null;
   private static memExpiresAt = 0;
   private static bffConnected = false;
+  private static grantedScope = '';
+
+  /** Scopes Spotify actually granted this token (space-separated), for diagnostics. */
+  static getGrantedScopes(): string[] {
+    return this.grantedScope.split(/\s+/).filter(Boolean);
+  }
 
   /** Prefer the BFF session (server-held refresh token). Falls back to legacy localStorage flow. */
   static async initBffSession(): Promise<'connected' | 'revoked' | 'none' | 'legacy'> {
@@ -40,6 +53,9 @@ export class SpotifyAuthService {
       if (!res.ok) return this.isAuthenticated() ? 'legacy' : 'none';
       const data = await res.json() as { state?: string };
       if (data.state === 'connected') {
+        // Keep the granted scope list: it is the only way to tell "the server is running old
+        // code" apart from "Spotify refused this token" when /me comes back 403.
+        this.grantedScope = typeof (data as any).scope === 'string' ? (data as any).scope : '';
         const tok = await this.bffFetchToken();
         this.bffConnected = !!tok;
         return tok ? 'connected' : 'revoked';
@@ -75,11 +91,6 @@ export class SpotifyAuthService {
     }
   }
 
-  /** Full-page redirect into server-side PKCE login (recommended flow). */
-  static bffLogin(): void {
-    window.location.href = '/auth/spotify/login';
-  }
-
   static async bffLogout(): Promise<void> {
     this.memToken = null;
     this.memExpiresAt = 0;
@@ -94,6 +105,28 @@ export class SpotifyAuthService {
     }
   }
 
+  /**
+ * Ask the server to probe Spotify with the server-held token.
+ *
+ * Separates "the token is bad" from "Spotify will not identify this account" — the two look
+ * identical from the browser. Never returns tokens; only status codes, response text, and the
+ * granted scope list.
+ */
+static async diagnose(): Promise<{
+    grantedScopes: string[];
+    tokenExpiresInSeconds: number;
+    verdict: string;
+    probes: Record<string, { label: string; status: number; ok: boolean; body: string }>;
+  } | null> {
+    try {
+      const res = await fetch('/api/auth/diagnose', { headers: { 'X-Requested-With': 'Soundscape' } });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch {
+      return null;
+    }
+  }
+
   static isBffConnected(): boolean {
     return this.bffConnected && !!this.memToken && Date.now() < this.memExpiresAt - 60_000;
   }
@@ -103,22 +136,12 @@ export class SpotifyAuthService {
   }
 
   static getTokenExpirationDetails(): { isExpired: boolean; expiresInMs: number; expiresAt: number | null } {
-    if (this.memToken) {
-      const diff = this.memExpiresAt - Date.now();
-      return {
-        isExpired: diff <= 0,
-        expiresInMs: Math.max(0, diff),
-        expiresAt: this.memExpiresAt
-      };
-    }
-    const expiresAtStr = localStorage.getItem(this.expiresAtKey);
-    if (!expiresAtStr) return { isExpired: true, expiresInMs: 0, expiresAt: null };
-    const expiresAt = parseInt(expiresAtStr, 10);
-    const diff = expiresAt - Date.now();
+    if (!this.memToken) return { isExpired: true, expiresInMs: 0, expiresAt: null };
+    const diff = this.memExpiresAt - Date.now();
     return {
       isExpired: diff <= 0,
       expiresInMs: Math.max(0, diff),
-      expiresAt
+      expiresAt: this.memExpiresAt
     };
   }
 
@@ -165,184 +188,35 @@ export class SpotifyAuthService {
     return !!(this.memToken && Date.now() < this.memExpiresAt - 60_000);
   }
 
-  // PKCE Crypto Helpers
-  private static generateRandomString(length: number): string {
-    const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
-    let text = '';
-    const array = new Uint8Array(length);
-    window.crypto.getRandomValues(array);
-    for (let i = 0; i < length; i++) {
-      text += possible[array[i] % possible.length];
-    }
-    return text;
+  /**
+   * The single active "Connect Spotify" entry point.
+   *
+   * The server owns PKCE, the code exchange, and the refresh token; the browser only ever
+   * receives a short-lived access token in memory. The previous popup + window.opener
+   * handshake was removed because the server-side callback can no longer postMessage to an
+   * opener, which left the connect button spinning forever.
+   */
+  static bffLogin(): void {
+    window.location.href = '/auth/spotify/login';
   }
 
-  private static async sha256(plain: string): Promise<ArrayBuffer> {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(plain);
-    return window.crypto.subtle.digest('SHA-256', data);
-  }
-
-  private static base64UrlEncode(buffer: ArrayBuffer): string {
-    return btoa(String.fromCharCode(...new Uint8Array(buffer)))
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_')
-      .replace(/=+$/, '');
-  }
-
-  static async initiateAuth(): Promise<void> {
-    const clientId = this.getClientId();
-    const redirectUri = this.getRedirectUri();
-    const verifier = this.generateRandomString(64);
-    const hashed = await this.sha256(verifier);
-    const challenge = this.base64UrlEncode(hashed);
-
-    localStorage.setItem(this.verifierKey, verifier);
-
-    const state = this.generateRandomString(16);
-    localStorage.setItem('spotify_auth_state', state);
-
-    const params = new URLSearchParams({
-      client_id: clientId,
-      response_type: 'code',
-      redirect_uri: redirectUri,
-      code_challenge_method: 'S256',
-      code_challenge: challenge,
-      state: state,
-      scope: SPOTIFY_SCOPES
-    });
-
-    const authUrl = `https://accounts.spotify.com/authorize?${params.toString()}`;
-
-    // According to AI Studio oauth-integration skill:
-    // Container is iframe-only; OAuth popups must open provider URL directly
-    const width = 550;
-    const height = 750;
-    const left = window.screen.width / 2 - width / 2;
-    const top = window.screen.height / 2 - height / 2;
-
-    const popup = window.open(
-      authUrl,
-      'spotify_oauth',
-      `width=${width},height=${height},top=${top},left=${left},scrollbars=yes,status=1`
-    );
-
-    if (!popup || popup.closed || typeof popup.closed === 'undefined') {
-      console.warn('[Soundscape Auth] Popup blocked or restricted by iframe. Please allow popups or open in a new tab.');
-    }
-  }
-
-  static async exchangeCode(code: string): Promise<boolean> {
-    const verifier = localStorage.getItem(this.verifierKey);
-    const clientId = this.getClientId();
-    const redirectUri = this.getRedirectUri();
-
-    try {
-      // First try backend proxy (which avoids any CORS issues)
-      const proxyRes = await fetch('/api/auth/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          code,
-          code_verifier: verifier,
-          redirect_uri: redirectUri,
-          client_id: clientId
-        })
-      });
-
-      let data: any;
-      if (proxyRes.ok) {
-        data = await proxyRes.json();
-      } else {
-        // Fallback directly to accounts.spotify.com (which supports CORS with PKCE)
-        const params = new URLSearchParams({
-          grant_type: 'authorization_code',
-          code,
-          redirect_uri: redirectUri,
-          client_id: clientId,
-          code_verifier: verifier || ''
-        });
-
-        const res = await fetch('https://accounts.spotify.com/api/token', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: params
-        });
-
-        if (!res.ok) {
-          const errData = await res.json().catch(() => ({}));
-          throw new Error(errData.error_description || `OAuth error ${res.status}`);
-        }
-        data = await res.json();
-      }
-
-      if (data.access_token) {
-        this.saveTokens(data);
-        return true;
-      }
-      return false;
-    } catch (err: any) {
-      console.error('Failed to exchange Spotify auth code:', err);
-      throw err;
-    }
-  }
-
+  /**
+   * Renew the in-memory access token.
+   *
+   * The server holds the refresh token and performs the refresh itself, so this simply asks
+   * the BFF for a fresh short-lived access token. There is deliberately no client-side
+   * refresh-token path any more.
+   */
   static async refreshToken(): Promise<string | null> {
-    // BFF session refreshes server-side; never expose the refresh token.
-    if (this.bffConnected || this.memToken) {
-      const t = await this.bffFetchToken();
-      if (t) return t;
-    }
-    const refreshToken = localStorage.getItem(this.refreshTokenKey);
-    const clientId = this.getClientId();
-    if (!refreshToken) return null;
-
-    try {
-      // Try backend proxy
-      const proxyRes = await fetch('/api/auth/refresh', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refresh_token: refreshToken, client_id: clientId })
-      });
-
-      let data: any;
-      if (proxyRes.ok) {
-        data = await proxyRes.json();
-      } else {
-        const params = new URLSearchParams({
-          grant_type: 'refresh_token',
-          refresh_token: refreshToken,
-          client_id: clientId
-        });
-
-        const res = await fetch('https://accounts.spotify.com/api/token', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: params
-        });
-        if (!res.ok) return null;
-        data = await res.json();
-      }
-
-      if (data.access_token) {
-        this.saveTokens(data);
-        return data.access_token;
-      }
-      return null;
-    } catch (err) {
-      console.error('Failed to refresh Spotify token:', err);
-      return null;
-    }
+    return this.bffFetchToken();
   }
 
   private static saveTokens(data: { access_token: string; refresh_token?: string; expires_in: number }): void {
-    // Decision #5: Tokens never reach localStorage.
+    // Tokens live in memory only; the refresh token never reaches the browser.
     this.memToken = data.access_token;
     this.memExpiresAt = Date.now() + (data.expires_in || 3600) * 1000;
-    // Remove any legacy tokens from localStorage
-    localStorage.removeItem(this.tokenKey);
-    localStorage.removeItem(this.refreshTokenKey);
-    localStorage.removeItem(this.expiresAtKey);
+    // Scrub any tokens persisted by an older build.
+    for (const key of LEGACY_TOKEN_KEYS) localStorage.removeItem(key);
   }
 
   static disconnect(): void {
@@ -350,10 +224,7 @@ export class SpotifyAuthService {
     this.memExpiresAt = 0;
     this.bffConnected = false;
     void this.bffLogout();
-    localStorage.removeItem(this.tokenKey);
-    localStorage.removeItem(this.refreshTokenKey);
-    localStorage.removeItem(this.expiresAtKey);
-    localStorage.removeItem(this.verifierKey);
+    for (const key of LEGACY_TOKEN_KEYS) localStorage.removeItem(key);
     localStorage.removeItem('spotify_auth_state');
     localStorage.removeItem('soundscape_user_profile');
     localStorage.removeItem('soundscape_cached_playlists');

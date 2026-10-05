@@ -47,7 +47,11 @@ app.use((_req, res, next) => {
     "img-src 'self' https: data: blob:",
     // Audio elements need arbitrary HTTPS streams (radio + archive hosts).
     "media-src 'self' https: blob:",
-    `connect-src 'self'${isProd ? '' : ' ws: wss:'} https://api.spotify.com https://accounts.spotify.com https://lrclib.net ${openConnect}`,
+    // Spotify's Web Playback SDK runs part of itself from a `data:` module/worker, which then
+    // calls api.spotify.com. Without data:/blob: here the browser blocks those requests and
+    // Spotify playback silently never initialises.
+    `connect-src 'self'${isProd ? '' : ' ws: wss:'} data: blob: https://api.spotify.com https://accounts.spotify.com https://lrclib.net ${openConnect}`,
+    "worker-src 'self' blob: data:",
     "frame-src 'self' https://sdk.scdn.co",
     "frame-ancestors 'none'"
   ].join('; ');
@@ -75,15 +79,6 @@ function rateLimit(max: number, windowMs: number) {
     }
     next();
   };
-}
-
-function appOrigin(): string {
-  try {
-    const u = new URL(REDIRECT_URI);
-    return u.origin;
-  } catch {
-    return '';
-  }
 }
 
 // ---------- Spotify client config (no hardcoded fallback in prod paths) ----------
@@ -142,13 +137,30 @@ function parseCookies(req: express.Request): Record<string, string> {
   }
   return out;
 }
-function setSessionCookie(res: express.Response, sid: string): void {
-  const secure = process.env.NODE_ENV === 'production';
-  res.setHeader('Set-Cookie', `soundscape_sid=${encodeURIComponent(sid)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${30 * 24 * 3600}${secure ? '; Secure' : ''}`);
+/**
+ * Whether this request actually arrived over HTTPS.
+ *
+ * This must follow the request, not NODE_ENV: `NODE_ENV=production` says nothing about the
+ * scheme. Marking the session cookie `Secure` on a plain-HTTP loopback origin makes browsers
+ * (and embedded webviews) drop it, which silently breaks the connection even though the token
+ * exchange succeeded. `Secure` is therefore set only when the connection really is HTTPS.
+ */
+function isHttpsRequest(req: express.Request): boolean {
+  const forwarded = req.headers['x-forwarded-proto'];
+  const proto = (Array.isArray(forwarded) ? forwarded[0] : forwarded ?? (req.secure ? 'https' : 'http'))
+    .toString()
+    .split(',')[0]
+    .trim()
+    .toLowerCase();
+  return proto === 'https';
 }
-function clearSessionCookie(res: express.Response): void {
-  const secure = process.env.NODE_ENV === 'production';
-  res.setHeader('Set-Cookie', `soundscape_sid=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure ? '; Secure' : ''}`);
+function setSessionCookie(req: express.Request, res: express.Response, sid: string): void {
+  const secure = isHttpsRequest(req) ? '; Secure' : '';
+  res.setHeader('Set-Cookie', `soundscape_sid=${encodeURIComponent(sid)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${30 * 24 * 3600}${secure}`);
+}
+function clearSessionCookie(req: express.Request, res: express.Response): void {
+  const secure = isHttpsRequest(req) ? '; Secure' : '';
+  res.setHeader('Set-Cookie', `soundscape_sid=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure}`);
 }
 function getSession(req: express.Request): ServerSession | null {
   const sid = parseCookies(req)['soundscape_sid'];
@@ -167,11 +179,11 @@ function b64url(n: number): string {
 
 const ALLOWED_REDIRECT_URIS = new Set<string>([
   REDIRECT_URI,
-  'http://127.0.0.1:3000/auth/callback',
-  'http://localhost:3000/auth/callback'
+  'http://127.0.0.1:3000/auth/spotify/callback',
+  'http://localhost:3000/auth/spotify/callback'
 ]);
 if (process.env.APP_URL && !process.env.APP_URL.includes('MY_APP_URL')) {
-  ALLOWED_REDIRECT_URIS.add(`${process.env.APP_URL.replace(/\/+$/, '')}/auth/callback`);
+  ALLOWED_REDIRECT_URIS.add(`${process.env.APP_URL.replace(/\/+$/, '')}/auth/spotify/callback`);
 }
 
 // Initialize server-side Gemini client
@@ -195,12 +207,17 @@ app.get('/healthz', (_req, res) => {
   res.json({ ok: true, version: '2.0.0-bff', time: new Date().toISOString() });
 });
 
+function extractAppUrl(redirectUri: string): string {
+  // Extract base URL from redirect URI (remove /auth/spotify/callback or /auth/callback suffix)
+  return redirectUri.replace(/\/auth\/(spotify\/)?callback$/, '');
+}
+
 // API: Config check (no secrets)
 app.get('/api/config', (_req, res) => {
   res.json({
     clientId: ENV_CLIENT_ID || null,
     hasEnvClientId: !!ENV_CLIENT_ID,
-    appUrl: REDIRECT_URI.replace('/auth/callback', ''),
+    appUrl: extractAppUrl(REDIRECT_URI),
     redirectUri: REDIRECT_URI,
     hasGeminiKey: !!process.env.GEMINI_API_KEY,
     bffAuth: true
@@ -208,12 +225,17 @@ app.get('/api/config', (_req, res) => {
 });
 
 // ---------- BFF OAuth (recommended flow) ----------
+// `user-read-private` / `user-read-email` are REQUIRED: GET /me returns 403 without them, and
+// /me is what tells the client who is signed in. Omitting them produced a token that
+// exchanged fine but left the UI permanently "Disconnected".
 const SPOTIFY_SCOPES = [
+  'user-read-private', 'user-read-email',
   'user-library-read', 'user-library-modify',
   'playlist-read-private', 'playlist-read-collaborative',
   'playlist-modify-private', 'playlist-modify-public',
   'streaming', 'user-read-playback-state', 'user-modify-playback-state',
-  'user-read-currently-playing', 'user-read-recently-played', 'user-top-read'
+  'user-read-currently-playing', 'user-read-recently-played', 'user-top-read',
+  'user-follow-read', 'user-follow-modify'
 ].join(' ');
 
 app.get('/auth/spotify/login', rateLimit(10, 60_000), (req, res) => {
@@ -222,7 +244,7 @@ app.get('/auth/spotify/login', rateLimit(10, 60_000), (req, res) => {
 
   const host = req.get('host') || '';
   const proto = (req.headers['x-forwarded-proto'] ?? (req.secure ? 'https' : 'http')).toString().split(',')[0];
-  const candidate = `${proto}://${host}/auth/callback`;
+  const candidate = `${proto}://${host}/auth/spotify/callback`;
   const redirectUri = ALLOWED_REDIRECT_URIS.has(candidate) ? candidate : REDIRECT_URI;
 
   const state = b64url(32);
@@ -242,12 +264,15 @@ app.get('/auth/spotify/callback', rateLimit(10, 60_000), async (req, res) => {
   const state = typeof req.query.state === 'string' ? req.query.state : '';
   const err = typeof req.query.error === 'string' ? req.query.error : '';
   if (err) return res.redirect(302, `/?auth_error=${encodeURIComponent(err)}`);
-  if (!code || !state) return res.status(400).send('Missing code/state');
+  // Never strand the person on a bare error page: every failure below returns to the app
+  // with an explicit, actionable code that the UI renders.
+  if (!code || !state) return res.redirect(302, '/?auth_error=missing_params');
   const rec = pkceStore.get(state);
   pkceStore.delete(state);
-  if (!rec || Date.now() > rec.expiresAt) return res.status(400).send('Expired login session. Please try again.');
+  if (!rec) return res.redirect(302, '/?auth_error=invalid_state');
+  if (Date.now() > rec.expiresAt) return res.redirect(302, '/?auth_error=expired');
   const clientId = effectiveClientId();
-  if (!clientId) return res.status(500).send('Server client ID not configured');
+  if (!clientId) return res.redirect(302, '/?auth_error=server_error');
   try {
     const redirectUri = rec.redirectUri || REDIRECT_URI;
     const params = new URLSearchParams({
@@ -271,7 +296,7 @@ app.get('/auth/spotify/callback', rateLimit(10, 60_000), async (req, res) => {
       scope: String(data['scope'] || ''),
       createdAt: Date.now(), lastUsedAt: Date.now()
     });
-    setSessionCookie(res, sid);
+    setSessionCookie(req, res, sid);
     return res.redirect(302, '/?auth_success=1');
   } catch (e) {
     console.error('BFF callback error:', e);
@@ -337,12 +362,70 @@ app.get('/api/auth/token', rateLimit(60, 60_000), async (req, res) => {
   res.json({ access_token: s.accessToken, expires_at: s.expiresAt });
 });
 
+/**
+ * Connection diagnostic.
+ *
+ * Answers the only question that matters when sign-in "succeeds" but nothing syncs: is the
+ * TOKEN bad, or is the ACCOUNT not permitted? It probes two endpoints with the server-held
+ * token — `/me` (needs user-read-private) and `/search` (needs no special scope):
+ *
+ *   search 200 + me 403  -> token is valid, Spotify refuses to identify this account
+ *   both 403             -> the whole app is restricted for this account
+ *   both 200             -> the token is fine and the browser path is at fault
+ *
+ * Returns only status codes, response text, and the granted scope list. The access and refresh
+ * tokens are never included.
+ */
+app.get('/api/auth/diagnose', rateLimit(20, 60_000), async (req, res) => {
+  if (!req.headers['x-requested-with']) {
+    return res.status(403).json({ error: { code: 'csrf', message: 'Missing X-Requested-With header', retryable: false } });
+  }
+  const s = getSession(req);
+  if (!s) return res.status(401).json({ error: { code: 'not_connected', message: 'No Spotify session', retryable: false } });
+  if (Date.now() > s.expiresAt - 60_000) {
+    const ok = await refreshSession(s);
+    if (!ok) return res.status(401).json({ error: { code: 'revoked', message: 'Session revoked — reconnect Spotify', retryable: false } });
+  }
+
+  const probe = async (label: string, path: string) => {
+    try {
+      const r = await fetch(`https://api.spotify.com/v1${path}`, {
+        headers: { Authorization: `Bearer ${s.accessToken}` }
+      });
+      const text = await r.text();
+      return { label, status: r.status, ok: r.ok, body: text.slice(0, 400) };
+    } catch (e: unknown) {
+      return { label, status: 0, ok: false, body: e instanceof Error ? e.message : 'network error' };
+    }
+  };
+
+  const [me, search] = await Promise.all([
+    probe('me', '/me'),
+    probe('search', '/search?q=daft&type=track&limit=1')
+  ]);
+
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({
+    grantedScopes: s.scope.split(/\s+/).filter(Boolean),
+    tokenExpiresInSeconds: Math.max(0, Math.round((s.expiresAt - Date.now()) / 1000)),
+    probes: { me, search },
+    verdict:
+      search.ok && !me.ok
+        ? 'Token is valid, but Spotify refuses to identify this account. This is a Spotify app-permission issue (User Management / app restrictions), not a Soundscape bug.'
+        : !search.ok && !me.ok
+          ? 'Spotify is refusing every call for this app. Read the message above: the usual cause is that the Spotify account which OWNS this app in the Developer Dashboard does not have an active Premium subscription. Soundscape itself is fine.'
+          : me.ok
+            ? 'The token and profile both work. If the app still shows a problem, the fault is in the browser request path.'
+            : 'Unexpected result.'
+  });
+});
+
 app.post('/api/auth/logout', (req, res) => {
   const csrf = req.headers['x-requested-with'];
   if (!csrf) return res.status(403).json({ error: { code: 'csrf', message: 'Missing X-Requested-With header', retryable: false } });
   const s = getSession(req);
   if (s) sessions.delete(s.id);
-  clearSessionCookie(res);
+  clearSessionCookie(req, res);
   res.json({ ok: true });
 });
 
@@ -384,38 +467,10 @@ app.post('/api/auth/token', rateLimit(10, 60_000), async (req, res) => {
   }
 });
 
-// API: OAuth Token Refresh Proxy (legacy compat)
-app.post('/api/auth/refresh', rateLimit(10, 60_000), async (req, res) => {
-  try {
-    const { refresh_token, client_id } = req.body || {};
-    if (!refresh_token) {
-      return res.status(400).json({ error: 'Missing refresh_token' });
-    }
-
-    const resolvedClientId = effectiveClientId(client_id);
-    if (!resolvedClientId) return res.status(500).json({ error: 'Server client ID not configured' });
-    const params = new URLSearchParams({
-      grant_type: 'refresh_token',
-      refresh_token: String(refresh_token),
-      client_id: resolvedClientId
-    });
-
-    const spotifyRes = await fetch('https://accounts.spotify.com/api/token', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded'
-      },
-      body: params
-    });
-
-    const data = await spotifyRes.json();
-    return res.status(spotifyRes.status).json(data);
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Internal proxy error';
-    console.error('Proxy token refresh error');
-    return res.status(500).json({ error: msg });
-  }
-});
+// NOTE: the legacy `POST /api/auth/refresh` proxy was removed. It existed only to trade a
+// browser-supplied refresh token for a new access token, which is exactly what the BFF
+// session prevents: `refreshSession()` performs the refresh with the server-held, encrypted
+// refresh token, and `GET /api/auth/token` hands the browser only a short-lived access token.
 
 // API: AI DJ & Smart Curation via Gemini API (honest errors, no fake tracks)
 app.post('/api/ai/dj', rateLimit(10, 60_000), async (req, res) => {
@@ -469,99 +524,16 @@ app.post('/api/ai/dj', rateLimit(10, 60_000), async (req, res) => {
   }
 });
 
-// OAuth Callback Route (legacy popup callback) — XSS-hardened, origin-locked postMessage
-app.get(['/auth/callback', '/auth/callback/'], (req, res) => {
-  const code = typeof req.query.code === 'string' ? req.query.code : '';
-  const error = typeof req.query.error === 'string' ? req.query.error : '';
-  const state = typeof req.query.state === 'string' ? req.query.state : '';
-  const origin = appOrigin();
-
-  res.send(`
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-      <meta charset="utf-8">
-      <title>Spotify Authentication - Soundscape</title>
-      <style>
-        body {
-          background-color: #131313;
-          color: #e5e2e1;
-          font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          height: 100vh;
-          margin: 0;
-          text-align: center;
-          padding: 20px;
-        }
-        .card {
-          background: #201f1f;
-          border: 1px solid rgba(255,255,255,0.08);
-          border-radius: 20px;
-          padding: 32px;
-          max-width: 380px;
-          box-shadow: 0 16px 32px rgba(0,0,0,0.6);
-        }
-        .icon {
-          width: 56px;
-          height: 56px;
-          border-radius: 50%;
-          background: #1db954;
-          color: #003914;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          margin: 0 auto 16px;
-          font-size: 28px;
-          font-weight: bold;
-        }
-        h2 { margin: 0 0 8px; font-size: 20px; }
-        p { color: #c6c6c7; font-size: 14px; margin: 0 0 20px; line-height: 1.5; }
-        .spinner {
-          width: 20px;
-          height: 20px;
-          border: 2px solid rgba(83,224,118,0.2);
-          border-top-color: #53e076;
-          border-radius: 50%;
-          animation: spin 0.8s linear infinite;
-          margin: 12px auto 0;
-        }
-        @keyframes spin { to { transform: rotate(360deg); } }
-      </style>
-    </head>
-    <body>
-      <div class="card">
-        <div class="icon">✓</div>
-        <h2>Spotify Authorized</h2>
-        <p>Connecting your Spotify library to Soundscape. This window will close automatically.</p>
-        <div class="spinner"></div>
-      </div>
-      <script>
-        var code = ${JSON.stringify(code).replace(/</g, '\\u003c')};
-        var error = ${JSON.stringify(error).replace(/</g, '\\u003c')};
-        var state = ${JSON.stringify(state).replace(/</g, '\\u003c')};
-        var targetOrigin = ${JSON.stringify(origin).replace(/</g, '\\u003c')};
-
-        if (window.opener) {
-          window.opener.postMessage({
-            type: 'SPOTIFY_AUTH_CODE',
-            code: code,
-            error: error,
-            state: state
-          }, targetOrigin || window.location.origin);
-          setTimeout(function () {
-            window.close();
-          }, 400);
-        } else {
-          var targetUrl = '/?code=' + encodeURIComponent(code) + (error ? '&error=' + encodeURIComponent(error) : '');
-          window.location.href = targetUrl;
-        }
-      </script>
-    </body>
-    </html>
-  `);
+// Legacy popup callback path, retired.
+//
+// This route used to render a "Spotify Authorized" page that posted the authorization code
+// to `window.opener` and waited for the parent window to exchange it. The BFF flow made that
+// handshake impossible (the server owns the exchange now), so the page spun forever on a
+// message nobody was listening for. The route is kept only so a stale redirect URI or an old
+// bookmark lands somewhere honest instead of a dead spinner: it forwards straight into the
+// one canonical login flow.
+app.get(['/auth/callback', '/auth/callback/'], (_req, res) => {
+  res.redirect(302, '/auth/spotify/login');
 });
 
 // Vite middleware in dev or static serving in production

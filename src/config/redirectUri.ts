@@ -4,7 +4,7 @@ export const getRedirectUri = (): string => {
     return envRedirectUri.trim();
   }
   // Default to 127.0.0.1 for development (Spotify requires exact match)
-  return 'http://127.0.0.1:3000/auth/callback';
+  return 'http://127.0.0.1:3000/auth/spotify/callback';
 };
 
 export const REDIRECT_URI = getRedirectUri();

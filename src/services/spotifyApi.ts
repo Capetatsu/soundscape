@@ -17,6 +17,32 @@ export interface PlaybackApiResponse {
   reason?: string;
 }
 
+/**
+ * Turn a failed Spotify response into a message worth showing.
+ *
+ * Spotify puts the real cause in the JSON body (for example "Insufficient client scope" when
+ * the granted token is missing user-read-private, or a development-mode restriction). Reporting
+ * only the status code hides the one fact needed to fix it.
+ */
+async function describeSpotifyError(res: Response, fallback: string): Promise<string> {
+  try {
+    const body = await res.json();
+    const err = body?.error;
+    if (err && typeof err === 'object') {
+      const status = (err as any).status;
+      const message = (err as any).message;
+      const reason = (err as any).reason;
+      const parts = [message, reason].filter(Boolean);
+      const text = parts.length ? parts.join(' — ') : JSON.stringify(err);
+      return status ? `HTTP ${status}: ${text}` : text;
+    }
+    if (typeof err === 'string') return `HTTP ${res.status}: ${err}`;
+  } catch {
+    // Body absent or not JSON; fall through to the generic message.
+  }
+  return `${fallback} (HTTP ${res.status})`;
+}
+
 export class SpotifyApiClient {
   private static async fetchWithAuth(endpoint: string, options: RequestInit = {}): Promise<Response> {
     let token = SpotifyAuthService.getAccessToken();
@@ -57,7 +83,14 @@ export class SpotifyApiClient {
 
   static async getMe(): Promise<SpotifyUser> {
     const res = await this.fetchWithAuth('/me');
-    if (!res.ok) throw new Error(`Failed to fetch user profile: ${res.status}`);
+    if (!res.ok) {
+      throw new Error(
+        `Spotify refused the profile request — ${await describeSpotifyError(
+          res,
+          'Failed to fetch user profile'
+        )}`
+      );
+    }
     return res.json();
   }
 

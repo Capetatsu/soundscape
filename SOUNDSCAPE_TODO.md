@@ -8,8 +8,10 @@
 - [x] Baseline `tsc --noEmit` clean
 
 ## M1 — Security hotfix (doc 03 issues 1–3, doc 21)
-- [x] XSS-hardened `/auth/callback` (JSON-embedded params, no inline reflection)
-- [x] `postMessage` origin-locked (was `'*'`)
+- [x] `/auth/callback` popup page **retired** — it reflected query params into an inline `<script>` (XSS, doc 03 issue 1) and could never complete once the code exchange moved server-side. The route now redirects to `/auth/spotify/login`, so neither the XSS surface nor the endless "Spotify Authorized" spinner remains
+- [x] Legacy `postMessage`/popup handshake removed from the client (the origin-locked `'*'` target is gone)
+- [x] Client-side code exchange and client-side refresh-token path removed; the server owns both
+- [x] `POST /api/auth/refresh` removed (it turned a browser-held refresh token into an access token)
 - [x] Server-derived `redirect_uri` enforced (was client-supplied)
 - [x] Removed hardcoded client-ID fallback from server paths (env-driven, legacy dev fallback flagged)
 - [x] Security headers (CSP, X-Content-Type-Options, Referrer-Policy, X-Frame-Options, HSTS in prod)
