@@ -99,7 +99,7 @@
 
 ## MASTER MISSION — final completion pass (2026-10-05)
 - [x] P0 baseline: tree clean, npm install up-to-date, tsc clean, build green
-- [x] P1 Jamendo — **LIVE** with owner's read-only key (`acde4470`). Search returns real
+- [x] P1 Jamendo — **LIVE** with owner's read-only key (value kept in `.env`, never committed). Search returns real
       results with per-row source+format badges. **First-play rate measured 8/8 (100%)**
       across repeated fresh sessions after the fixes below.
       Four bugs found and fixed to get here:
@@ -216,8 +216,8 @@
 - [x] Committed: 3 logical commits on main
 
 ## Blocked on live credentials (implemented + failure-path tested, needs a real account)
-- [x] Jamendo live search/playback — **CLEARED** via owner's read-only key (`acde4470`,
-      in `.env` as `VITE_JAMENDO_CLIENT_ID`, gitignored). 8/8 first-play rate measured,
+- [x] Jamendo live search/playback — **CLEARED** via owner's read-only key (in `.env` as
+      `VITE_JAMENDO_CLIENT_ID`, gitignored). 8/8 first-play rate measured,
       FLAC-first verified against a real served stream.
 - [ ] M2 E2E: login → status connected → token → logout destroys session (Spotify only)
 - [ ] M4/M5 live pass: real playlist sync counts + audible SDK playback on Premium desktop Chrome
