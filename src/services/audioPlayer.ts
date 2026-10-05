@@ -100,6 +100,7 @@ export class AudioPlayerService {
   private statePollTimer: ReturnType<typeof setInterval> | null = null;
   private playStartWall = 0;
   private playStartPositionMs = 0;
+  private sdkScriptLoading = false;
   private statsOpen = false;
   private localObjectUrl: string | null = null;
 
@@ -197,7 +198,8 @@ export class AudioPlayerService {
     });
 
     this.checkSdkScriptLoaded();
-    this.initSdkIfAvailable();
+    // Spotify SDK is only injected when a Spotify session exists (lazy, keeps CSP strict).
+    if (SpotifyAuthService.isAuthenticated()) this.initSdkIfAvailable();
   }
 
   static getInstance(): AudioPlayerService {
@@ -625,7 +627,7 @@ export class AudioPlayerService {
   }
 
   public initSdkIfAvailable(): void {
-    this.checkSdkScriptLoaded();
+    this.ensureSpotifySdk();
     const token = SpotifyAuthService.getAccessToken();
     if (!token) return;
 
@@ -633,7 +635,41 @@ export class AudioPlayerService {
       this.setupSpotifyPlayer(token);
     }
     // Late SDK arrival is handled by the module-level onSpotifyWebPlaybackSDKReady
-    // hook installed below (chains any pre-existing hook, e.g. from index.html).
+    // hook installed below (chains any pre-existing hook).
+  }
+
+  /**
+   * Lazily inject Spotify's Web Playback SDK. Only ever called when a Spotify session
+   * exists — the free-catalogue player never touches Spotify's network or CSP needs.
+   */
+  private ensureSpotifySdk(): void {
+    if (this.sdkScriptLoading || (window as any).Spotify) return;
+    this.sdkScriptLoading = true;
+    try {
+      const s = document.createElement('script');
+      s.src = 'https://sdk.scdn.co/spotify-player.js';
+      s.async = true;
+      s.crossOrigin = 'anonymous';
+      s.onerror = () => {
+        this.sdkScriptLoading = false;
+        this.sdkScriptLoaded = false;
+        this.lastError = {
+          code: 'SDK_LOAD_FAILED',
+          message: 'Could not load the Spotify Web Playback SDK. Spotify playback is unavailable; the free catalogue still works.',
+          timestamp: Date.now()
+        };
+        this.notify();
+      };
+      s.onload = () => {
+        this.sdkScriptLoading = false;
+        this.handleSdkScriptReady();
+      };
+      document.head.appendChild(s);
+      // Some builds of the SDK call the global callback synchronously after load.
+      this.handleSdkScriptReady();
+    } catch {
+      this.sdkScriptLoading = false;
+    }
   }
 
   /** Called when the Spotify SDK script reports ready (even pre-login). */

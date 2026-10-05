@@ -192,13 +192,19 @@ export const DiagnosticsModal: React.FC<DiagnosticsModalProps> = ({
     }
     setTestResults([...results]);
 
-    // Step 4: Web Playback SDK Loading & Initializer
+    // Step 4: Web Playback SDK Loading & Initializer (lazy — only with a Spotify session)
     setTestStage(4);
     await new Promise((r) => setTimeout(r, 200));
     const hasSpotifyGlobal = !!(window as any).Spotify;
     const hasScriptTag = !!document.querySelector('script[src*="sdk.scdn.co/spotify-player.js"]');
 
-    if (hasSpotifyGlobal && hasScriptTag) {
+    if (!isAuth) {
+      results.push({
+        name: 'Web Playback SDK Script',
+        status: 'warning',
+        message: 'Not loaded — by design. The SDK is injected only when a Spotify session exists (free catalogue never needs it).'
+      });
+    } else if (hasSpotifyGlobal && hasScriptTag) {
       results.push({
         name: 'Web Playback SDK Script',
         status: 'pass',
@@ -208,13 +214,13 @@ export const DiagnosticsModal: React.FC<DiagnosticsModalProps> = ({
       results.push({
         name: 'Web Playback SDK Script',
         status: 'warning',
-        message: 'Script tag present, waiting for onSpotifyWebPlaybackSDKReady callback'
+        message: 'Script injected, waiting for onSpotifyWebPlaybackSDKReady callback'
       });
     } else {
       results.push({
         name: 'Web Playback SDK Script',
         status: 'fail',
-        message: 'sdk.scdn.co/spotify-player.js script tag not found in DOM'
+        message: 'SDK not present despite an active Spotify session'
       });
     }
     setTestResults([...results]);

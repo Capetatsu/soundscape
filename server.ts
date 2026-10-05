@@ -19,6 +19,7 @@ app.use(express.json({ limit: '100kb' }));
 // Internet Archive, Radio Browser, Jamendo) — otherwise the player itself breaks.
 app.use((_req, res, next) => {
   const isProd = process.env.NODE_ENV === 'production';
+  const isHttps = (_req.headers['x-forwarded-proto'] ?? '').toString().split(',')[0] === 'https';
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader('X-Frame-Options', 'DENY');
@@ -50,7 +51,7 @@ app.use((_req, res, next) => {
     "frame-ancestors 'none'"
   ].join('; ');
   res.setHeader('Content-Security-Policy', csp);
-  if (isProd) {
+  if (isProd && isHttps) {
     res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   }
   next();
@@ -243,7 +244,7 @@ app.get('/auth/spotify/callback', rateLimit(10, 60_000), async (req, res) => {
     });
     const data = await tokenRes.json() as Record<string, unknown>;
     if (!tokenRes.ok || !data['access_token']) {
-      console.error('BFF token exchange failed:', data);
+      console.error('BFF token exchange failed:', { status: tokenRes.status, error: data['error'] ?? 'unknown' });
       return res.redirect(302, '/?auth_error=exchange_failed');
     }
     const sid = b64url(32);

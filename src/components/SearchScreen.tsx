@@ -316,6 +316,7 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({
           <button
             onClick={() => setQuery('')}
             className="absolute right-3.5 w-7 h-7 flex items-center justify-center text-[#c6c6c7] hover:text-white"
+            aria-label="Clear search"
           >
             <span className="material-symbols-outlined text-lg">close</span>
           </button>
@@ -428,7 +429,7 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({
                           <div
                             key={track.id}
                             onClick={() => onPlayTrack(track)}
-                            className="flex items-center justify-between p-2.5 rounded-xl hover:bg-[#201f1f] cursor-pointer transition-colors group"
+                            className="flex items-center justify-between gap-2 p-2.5 rounded-xl hover:bg-[#201f1f] cursor-pointer transition-colors group scroll-mt-28"
                           >
                             <div className="flex items-center gap-3 min-w-0 flex-1">
                               <div className="w-10 h-10 rounded-lg overflow-hidden bg-[#131313] flex-shrink-0">
@@ -447,16 +448,17 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({
                                 </p>
                               </div>
                             </div>
-                            <div className="flex items-center gap-1.5 flex-shrink-0">
+                            <div className="flex items-center gap-2 flex-shrink-0">
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   onPlayTrack(track);
                                 }}
-                                className="w-8 h-8 rounded-full flex items-center justify-center text-[#53e076] hover:bg-[#53e076]/10"
+                                className="w-10 h-10 rounded-full flex items-center justify-center text-[#53e076] hover:bg-[#53e076]/10 active:scale-95"
                                 title={`Play full track (${source}, ${format})`}
+                                aria-label={`Play ${track.name}`}
                               >
-                                <span className="material-symbols-outlined text-xl">play_arrow</span>
+                                <span className="material-symbols-outlined text-2xl">play_arrow</span>
                               </button>
                               {onAddToQueue && (
                                 <button
@@ -464,10 +466,11 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({
                                     e.stopPropagation();
                                     onAddToQueue(track);
                                   }}
-                                  className="w-8 h-8 rounded-full flex items-center justify-center text-[#c6c6c7] hover:text-white hover:bg-white/5"
+                                  className="w-10 h-10 rounded-full flex items-center justify-center text-[#c6c6c7] hover:text-white hover:bg-white/5 active:scale-95"
                                   title="Add to queue"
+                                  aria-label={`Add ${track.name} to queue`}
                                 >
-                                  <span className="material-symbols-outlined text-lg">playlist_add</span>
+                                  <span className="material-symbols-outlined text-xl">playlist_add</span>
                                 </button>
                               )}
                               {onAddToPlaylist && (
@@ -476,10 +479,11 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({
                                     e.stopPropagation();
                                     onAddToPlaylist(track);
                                   }}
-                                  className="w-8 h-8 rounded-full flex items-center justify-center text-[#c6c6c7] hover:text-white hover:bg-white/5"
+                                  className="w-10 h-10 rounded-full flex items-center justify-center text-[#c6c6c7] hover:text-white hover:bg-white/5 active:scale-95"
                                   title="Add to a Soundscape playlist"
+                                  aria-label={`Add ${track.name} to a playlist`}
                                 >
-                                  <span className="material-symbols-outlined text-lg">library_add</span>
+                                  <span className="material-symbols-outlined text-xl">library_add</span>
                                 </button>
                               )}
                             </div>

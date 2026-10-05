@@ -20,6 +20,7 @@ export const QueueDrawer: React.FC<QueueDrawerProps> = ({
   onRemoveFromQueue,
   onClearQueue
 }) => {
+  // Escape/backdrop must work on mount — declared before the early return below.
   useEffect(() => {
     if (!isOpen) return;
     const onKey = (e: KeyboardEvent) => {

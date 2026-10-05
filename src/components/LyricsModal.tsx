@@ -122,6 +122,7 @@ export const LyricsModal: React.FC<LyricsModalProps> = ({ isOpen, onClose, track
           <button
             onClick={onClose}
             className="w-9 h-9 rounded-full bg-[#2a2a2a] hover:bg-[#353534] text-[#c6c6c7] hover:text-white flex items-center justify-center flex-shrink-0"
+            aria-label="Close lyrics"
           >
             <span className="material-symbols-outlined text-xl">close</span>
           </button>
