@@ -41,9 +41,10 @@ Nothing here scrapes YouTube, extracts Spotify streams, or bypasses DRM.
 3. Set `SPOTIFY_CLIENT_ID`, `REDIRECT_URI`, and (production) `SESSION_ENCRYPTION_KEY`.
 4. Account → **Connect Spotify (recommended)**.
 
-Dev Mode limits (platform restrictions, not bugs): ≤5 users, search ≤10 items,
+Dev Mode limits (platform restrictions, not bugs): ≤5 users, search ≤10 items per page,
 playlist track lists only for playlists you own/collaborate on, several browse
-endpoints removed (the app doesn't call them).
+endpoints removed (the app doesn't call them). Soundscape's own search paginates past
+that ceiling across the free catalogues.
 
 ## AI DJ (optional)
 
@@ -57,8 +58,12 @@ items are shown text-only and can never be played.
   (AES-256-GCM session vault, HttpOnly `SameSite=Lax` cookie); the browser holds
   only a short-lived access token in memory. Legacy/manual-token flow is labeled
   dev-only.
-- SoundCloud-style server-held secrets pattern is reserved for future subscriber
-  modules; no secret is ever bundled into client code.
+- The Spotify Web Playback SDK script is injected **lazily**, only once a Spotify
+  session exists — a logged-out Soundscape session loads no third-party script at all.
+- Your Subsonic/Navidrome/Jellyfin credentials stay in `sessionStorage` for the tab
+  only, and authenticate with the standard salted-MD5 token scheme, never a raw password.
+- Jamendo uses a read-only `client_id`, which Jamendo's API design publishes to clients.
+- No secret is ever bundled into client code.
 - Secrets live in `.env` (never committed). Rate limits: auth 10/min, token
   60/min, AI 10/min. JSON bodies capped at 100 KB. CSP enforced.
 
