@@ -848,7 +848,25 @@ export class AudioPlayerService {
     };
   }
 
+  /** Mirror the confirmed playback truth onto the OS media session.
+   *
+   *  Without this, `navigator.mediaSession.playbackState` stayed "none" forever, so lock
+   *  screens, headsets and hardware media keys had no play/pause state to render. Driven from
+   *  `isPlaying` — which is only ever set by confirmed adapter/audio-element events — so the
+   *  OS never advertises audio that isn't actually playing.
+   */
+  private syncMediaPlaybackState(): void {
+    try {
+      const ms = navigator.mediaSession;
+      if (!ms) return;
+      ms.playbackState = this.isPlaying ? 'playing' : this.currentTrack ? 'paused' : 'none';
+    } catch {
+      // Older browsers lack playbackState — harmless.
+    }
+  }
+
   private notify(): void {
+    this.syncMediaPlaybackState();
     const state = this.getState();
     this.listeners.forEach((fn) => fn(state));
   }
