@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { AudioSettings } from '../types';
 import { AudioPlayerService } from '../services/audioPlayer';
 import { SubsonicBrowser, type SubsonicPlayTarget } from './SubsonicBrowser';
+import { readEnvKey } from '../config/env';
 
 interface AudioSettingsScreenProps {
   settings: AudioSettings;
@@ -275,9 +276,7 @@ const JamendoSection: React.FC = () => {
   });
   const [status, setStatus] = useState<'idle' | 'testing' | 'ok' | 'fail'>('idle');
   const [detail, setDetail] = useState('');
-  const envKey = (
-    (import.meta as unknown as { env?: Record<string, string | undefined> }).env?.VITE_JAMENDO_CLIENT_ID
-  )?.trim();
+  const envKey = readEnvKey('VITE_JAMENDO_CLIENT_ID') ?? '';
 
   const test = async () => {
     const id = clientId.trim();

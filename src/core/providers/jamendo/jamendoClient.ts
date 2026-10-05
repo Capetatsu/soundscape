@@ -3,6 +3,8 @@
 // throws JamendoNotConfigured — the UI stays honest, never faked.
 // Docs: https://developer.jamendo.com/v3.0 (verified Oct 2026).
 
+import { readEnvKey } from '../../../config/env';
+
 export class JamendoNotConfigured extends Error {
   constructor() {
     super('Jamendo client ID not configured. Add one in Settings → Free catalogue.');
@@ -31,9 +33,8 @@ export interface JamendoTrack {
 const API = 'https://api.jamendo.com/v3.0';
 
 export function jamendoClientId(): string | null {
-  // Safe outside Vite (import.meta.env is undefined under plain node/tsx).
-  const meta = import.meta as unknown as { env?: Record<string, string | undefined> };
-  const env = meta.env?.VITE_JAMENDO_CLIENT_ID?.trim();
+  // Build-time env first, then a Settings-entered value stored in this tab.
+  const env = readEnvKey('VITE_JAMENDO_CLIENT_ID');
   if (env) return env;
   try {
     const stored = localStorage.getItem('soundscape_jamendo_client_id')?.trim();
