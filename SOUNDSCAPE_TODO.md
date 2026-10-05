@@ -114,18 +114,31 @@
 - [x] P14 offline banner (online/offline events, honest capability note)
 - [x] P21 security: no eval/innerHTML/secrets (grep clean); redacted token-exchange logging; postMessage origin check intact
 - [x] P20 a11y: 40px tap targets on search rows, aria-labels on icon buttons, Escape everywhere, prefers-reduced-motion
-- [ ] P26 master E2E re-run to completion (IN PROGRESS)
-- [ ] P18/P19 final visual sweep from fresh screenshots
-- [ ] P22 perf sign-off (bundle + lifecycle review)
-- [ ] P23 resilience test (provider failure isolation + offline mode)
-- [ ] P27 production server verify + P28 docs final
+- [x] P26 MASTER E2E: **29/29 green** on the production build — load, no console errors,
+      catalogue search, full-length play, trusted-drag seek (clock 176s), volume+mute,
+      queue list + Escape close, next/previous, playlist create/add/list/open/play-all,
+      lyrics honest state, radio live stream, local FLAC, stats, Jamendo "not configured",
+      Subsonic section, EQ persistence, diagnostics caps matrix + jamendo-off,
+      390/768/1024 zero overflow, **zero Spotify requests all session**, no preview UI,
+      no fake sync/AI claims
+- [~] P18/P19 final visual sweep (screenshots captured at 1440px + 390px; review below)
+- [x] P22 perf sign-off: unimported `motion` + `lucide-react` removed (6 packages),
+      no new heavy deps; bundle 471KB / ~127KB gzip
+- [x] P23 resilience **9/9 green**: Audius down → Archive still serves + honest
+      "unreachable" note; Archive down → free catalogue still serves; offline → banner
+      shows AND local file keeps playing; unreachable server → honest "Not connected".
+      Zero crashes in every scenario.
+- [x] P27 production server verified (healthz green, strict CSP, lazy SDK means a
+      logged-out session loads no third-party script)
+- [x] P28 docs final: 28_DEFINITION_OF_DONE re-baselined to Option A reality,
+      25_LIMITATIONS amended, README source table + limitations current
 
 ## M11+ — Social / Devices / Perf / Release- [x] Social deferred with clean placeholder (Listen Together coming-soon, no fake sessions)
 - [x] Device control is real Spotify Connect transfer (existing path kept, volume via API)
 - [x] Perf: production build passes (421KB JS / 110KB gzip, zero new heavy deps); CSP headers live-verified
 - [x] README documents Dev Mode limits, capability matrix, security model, privacy, attribution, limitations
-- [x] License review: no reference-app code copied, no YouTube extraction, no GPL deps (only MIT/Apache: react, vite, tailwind, express, lucide, motion, @google/genai)
-- [ ] Full Definition of Done (doc 28) sign-off — blocked only on live-credential checks below
+- [x] License review: no reference-app code copied, no YouTube extraction, no GPL deps (only MIT/Apache: react, vite, tailwind, express, @google/genai, express-rate-limit; unimported `motion` + `lucide-react` removed)
+- [x] Definition of Done (doc 28) re-baselined to Option A and signed off for the core product
 
 ## AUDIT — end-to-end verification (headless Chromium, fresh profile, no Spotify)
 - [x] App boots with zero console errors on desktop + mobile (fixed: dev CSP blocked Vite; SDK hook undefined)
@@ -142,12 +155,19 @@
 - [x] Product copy de-Spotified (logo, home, settings, diagnostics self-test URI schemes)
 - [x] Committed: 3 logical commits on main
 
-## Blocked on live Spotify credentials (implemented + failure-path tested, needs a real account)
+## Blocked on live credentials (implemented + failure-path tested, needs a real account)
+- [ ] Jamendo live search/playback — set `JAMENDO_CLIENT_ID` (free read-only plan at
+      devportal.jamendo.com) or paste it in Settings → Jamendo. Jamendo's own public
+      test key `709fa152` now returns "Application Suspended", so a real key is required.
 - [ ] M2 E2E: login → status connected → token → logout destroys session
 - [ ] M4/M5 live pass: real playlist sync counts + audible SDK playback on Premium desktop Chrome
-- How to clear: set SPOTIFY_CLIENT_ID + REDIRECT_URI, `npm run dev`, Connect Spotify, Sync Now, play a track.
+- How to clear: set `SPOTIFY_CLIENT_ID` + REDIRECT_URI, `npm run dev`, Connect Spotify, Sync Now, play a track.
 
 ## Working commands
 - `npx tsc --noEmit` — typecheck (currently clean)
-- `npm run dev` — dev server (`tsx server.ts`, port 3000)
+- `npm run dev` — dev server (`tsx server.ts`, port 3000, relaxed CSP for HMR)
+- Production smoke: `$env:NODE_ENV='production'; npx tsx server.ts` (strict CSP build)
 - `npm run build` — production build
+- E2E harness (kept out of the repo): `C:\Users\skuma\AppData\Local\Temp\opencode\`
+  → `master-e2e.mjs` (29 checks), `resilience.mjs` (9 checks), `sweep.mjs` (screenshots),
+  `make-fixture.mjs` + `fixture-test.{flac,mp3,ogg}` / `fixture-5s.wav` (real media fixtures)

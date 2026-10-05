@@ -1,4 +1,9 @@
 # 25 Limitations (what cannot / will not be done)
+> Amended 2026-10-05 (Option A): Soundscape's DEFAULT player is the open catalogue
+> (Audius/Jamendo/Archive/radio/local/server) — items 1–10 below constrain the OPTIONAL
+> Spotify integration only, never the core experience. No major-label studio catalogue
+> exists in any legitimate free path (see 29). Previews are not a playback path anywhere.
+
 1. **Spotify audio runs only inside Spotify's players.** No EQ, crossfade, gapless, LUFS, visualizer-from-audio, or recording for Spotify tracks.
 2. **Spotify playback needs Premium**; Web Playback SDK targets desktop browsers; on phones Soundscape is a remote for another Connect device.
 3. **Dev Mode caps**: 5 users, owner Premium, search 10/page, limited endpoints. Wide public release needs Spotify Extended Quota approval, which is not granted for generic player clones (criteria tightened April 2025 — per secondary source; verify).

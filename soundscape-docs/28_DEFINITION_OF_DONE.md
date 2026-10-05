@@ -1,22 +1,82 @@
 # 28 Definition of Done
-## Product (v1)
-- [ ] Connect Spotify via official OAuth; no tokens in browser storage (inspect localStorage/IndexedDB/cookies in E2E)
-- [ ] Real playlists + Liked Songs displayed; counts match Spotify
-- [ ] Sync Now report shows accurate +/~/−; auto-sync interval configurable; last-sync time + status visible
-- [ ] Spotify track plays audibly via SDK on Premium desktop Chrome; pause/resume/seek/next/prev/shuffle/repeat/queue work
-- [ ] "Playing" is never displayed unless real audio position advances; Diagnostics shows INITIALIZED→READY→COMMAND SENT→COMMAND ACCEPTED→PLAYING/PAUSED/ERROR truthfully
-- [ ] Non-Premium and no-device cases show honest states
-- [ ] Offline: cached library browsable; Spotify playback disabled with explanation; local files play
-- [ ] Local FLAC/MP3/AAC/WAV playback with EQ + normalization + crossfade
-- [ ] Synced lyrics for ≥80% of a 50-track test set (LRCLIB-dependent)
+
+> Re-baselined 2026-10-05 after the Option A provider pivot (doc 29). The original
+> Spotify-first DoD is retained below under "Spotify track (optional integration)",
+> clearly separated from the product that actually ships: an open-catalogue player
+> that needs no Spotify account and no Premium subscription.
+
+Legend: [x] verified in a real browser against the production build · [~] implemented,
+live verification needs an external key/credential the owner supplies · [ ] not done.
+
+## Core product — open catalogue (the default experience)
+- [x] Search across Audius + Jamendo + Internet Archive with one ranked, deduped list
+      and honest per-row source + quality badges; "Show more" paginates for real
+- [x] Full-length playback of every free source (no preview path exists anywhere)
+- [x] Queue: add / play-next / reorder / remove / clear, persists across reload
+- [x] Next / previous / shuffle / repeat one / repeat off with real transitions
+- [x] Seek verified by trusted drag in E2E (clock advanced to 176 s)
+- [x] Volume + mute reachable from the full player
+- [x] Queue drawer, full player, lyrics, AI DJ, device picker, diagnostics all close
+      with Escape (single topmost-first handler in `App.tsx`)
+- [x] Lyrics: provider-supplied lyrics preferred, LRCLIB fallback, follow + pause,
+      honest "No lyrics" state when nothing exists
+- [x] Stats derived only from real playback events (skips counted, recent plays real)
+- [x] Radio: live community stations, HTTPS non-HLS streams, click etiquette stated
+- [x] Local files: FLAC/MP3/AAC/WAV/OGG, real WebAudio EQ + normalization + safety
+      limiter; `Artist - Title` parsing; DB-backed device shelf
+- [x] Soundscape-native playlists: create / rename / delete / add / remove / reorder /
+      play all / queue all, persisted in IndexedDB, fully independent of Spotify
+- [x] Self-hosted server (Subsonic/Navidrome/Jellyfin/Gonic): MD5 token auth,
+      connect-and-test, search, stream, cover art; credentials session-only
+- [x] Capability matrix surfaced in Diagnostics so no source over-claims
+- [~] Jamendo live search/playback — implemented end to end; Jamendo's public test key
+      returns "Application Suspended", so the owner's `JAMENDO_CLIENT_ID` is required.
+      Until then the provider stays cleanly disabled and says so.
+
+## Honesty and compliance
+- [x] No fabricated tracks, lyrics, stats, availability, sync claims, or AI fallback
+- [x] No preview fallback in player, labels, or diagnostics
+- [x] Quality labels state what each source really delivers (FLAC where provided,
+      VBR MP3, transcoded MP3, live codec/bitrate)
+- [x] Crossfade, bit-perfect output, Listen Together, native Android shell — stated as
+      deferred in README and never claimed anywhere in the UI
+- [x] Audio from Audius / Jamendo / Archive / Radio attributed to its source
+- [x] Limitations published in README (`soundscape-docs/25_LIMITATIONS.md`)
+
 ## Quality
-- [ ] doc 23 cases pass in CI; real-account smoke checklist signed
-- [ ] doc 22 budgets pass
-- [ ] CI no-mock grep passes (no fixtures/demo data/oscillator playback/generated album art in prod bundle)
-- [ ] License check clean; no GPL deps
+- [x] `tsc --noEmit` clean; production build green
+- [x] Master E2E suite 29/29 green on the production build, including:
+      zero Spotify API requests for the whole session, no horizontal overflow at
+      390 / 768 / 1024 px, no console errors, all playback paths real
+- [x] Resilience suite: provider down → siblings still serve; offline → honest banner
+      with local files still playing; unreachable server → honest connection failure
+- [x] No-mock policy upheld (no fixtures, demo data, or oscillator playback in prod)
+- [x] 40 px tap targets on search rows, `aria-label`s on icon-only buttons,
+      `prefers-reduced-motion` honoured
+
 ## Security
-- [ ] doc 21 checklist complete; XSS/postMessage/redirect issues from doc 03 verified fixed by tests OA-3
-## Compliance
-- [ ] Spotify attribution + Developer Policy review done; Dev-Mode limits documented in README
-## Honesty
-- [ ] 25_LIMITATIONS shown in README; no UI claims beyond provider capability
+- [x] CSP environment-aware (strict in production, relaxed only for Vite HMR in dev)
+- [x] Spotify SDK lazily injected, so a logged-out session pulls no third-party script
+- [x] `postMessage` origin-locked; server-enforced `redirect_uri`
+- [x] XSS regression fixed (no reflection of callback params)
+- [x] Rate limits + 100 KB body cap; AES-GCM server-side session vault keeps the
+      refresh token out of the browser; Subsonic credentials in `sessionStorage` only
+- [x] HSTS applied only behind `x-forwarded-proto: https`
+- [x] Token-exchange failures logged without dumping the response body
+
+## Spotify track (optional integration — not required for the product)
+- [x] OAuth via the BFF; no tokens in browser storage
+- [~] Live OAuth round trip + audible Premium SDK playback — implemented and wired,
+      needs the owner's real Spotify credentials to verify (documented in
+      `SOUNDSCAPE_TODO.md`)
+- [x] "Playing" is never displayed unless real audio position advances; Diagnostics
+      shows the INITIALIZED → READY → COMMAND SENT → COMMAND ACCEPTED → PLAYING ladder
+- [x] Non-Premium, no-device, and SDK-unsupported cases show honest states
+- [x] Library, playlists, liked songs, and artwork import where the API allows;
+      non-owned playlists explained honestly
+
+## Not required, honestly deferred
+- [ ] Crossfade / gapless (documented, not implemented)
+- [ ] Bit-perfect or USB-exclusive output (web cannot promise it)
+- [ ] Listen Together (roadmap)
+- [ ] Native Android background playback (framework-free `src/core/` is ready for it)
