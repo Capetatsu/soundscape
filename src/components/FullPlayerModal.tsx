@@ -260,16 +260,21 @@ export const FullPlayerModal: React.FC<FullPlayerModalProps> = ({
               max={durationMs || 100}
               value={currentPosition}
               onChange={(e) => {
+                const val = Number(e.target.value);
                 setIsScrubbing(true);
-                setScrubValue(Number(e.target.value));
+                setScrubValue(val);
               }}
-              onMouseUp={() => {
+              onMouseUp={(e) => {
                 setIsScrubbing(false);
-                onSeek(scrubValue);
+                const val = Number((e.currentTarget as HTMLInputElement).value);
+                setScrubValue(val);
+                onSeek(val);
               }}
-              onTouchEnd={() => {
+              onTouchEnd={(e) => {
                 setIsScrubbing(false);
-                onSeek(scrubValue);
+                const val = Number((e.currentTarget as HTMLInputElement).value);
+                setScrubValue(val);
+                onSeek(val);
               }}
               className="w-full h-1.5 bg-[#353534] rounded-lg appearance-none cursor-pointer accent-[#53e076] focus:outline-none"
               style={{

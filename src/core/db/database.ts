@@ -161,7 +161,8 @@ export const db = {
   async getPlaylists(): Promise<DbPlaylist[]> {
     return tx('playlist', 'readonly', (s) => s.getAll());
   },
-  async getTracksByUris(uris: string[]): Promise<DbTrack[]> {    const conn = await openDb();
+  async getTracksByUris(uris: string[]): Promise<DbTrack[]> {
+    const conn = await openDb();
     const out: DbTrack[] = [];
     await new Promise<void>((resolve, reject) => {
       const t = conn.transaction('track', 'readonly');
@@ -220,7 +221,8 @@ export const db = {
       .filter((r) => r.playlistUri === playlistUri)
       .sort((a, b) => a.position - b.position);
   },
-  async getSavedTracks(accountId: string): Promise<DbSavedTrack[]> {    const all = (await tx<DbSavedTrack[]>('saved_track', 'readonly', (s) => s.getAll())) as DbSavedTrack[];
+  async getSavedTracks(accountId: string): Promise<DbSavedTrack[]> {
+    const all = (await tx<DbSavedTrack[]>('saved_track', 'readonly', (s) => s.getAll())) as DbSavedTrack[];
     return all
       .filter((r) => r.accountId === accountId)
       .sort((a, b) => (b.addedAt || '').localeCompare(a.addedAt || ''));

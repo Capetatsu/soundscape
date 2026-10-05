@@ -11,7 +11,7 @@ interface SpotifyPage<T> {
 }
 
 export interface SyncReport {
-  trigger: 'manual' | 'auto' | 'startup';
+  trigger: 'manual' | 'auto' | 'startup' | 'focus';
   startedAt: number;
   endedAt: number;
   playlistsAdded: number;

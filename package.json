@@ -14,7 +14,8 @@
     "test:resilience": "node tests/resilience/resilience.mjs",
     "test:providers": "node tests/providers/provider-coverage.mjs && node tests/providers/archive-honesty.mjs",
     "test:jamendo": "node tests/jamendo/flac-truth.mjs && node tests/jamendo/first-play-rate.mjs",
-    "test:all": "npm run test:e2e && npm run test:resilience && npm run test:providers && npm run test:jamendo",
+    "test:next-phase": "node tests/auth/redirect-uri.mjs && node tests/search/catalog-discovery.mjs",
+    "test:all": "npm run test:e2e && npm run test:resilience && npm run test:providers && npm run test:jamendo && npm run test:next-phase",
     "test:fixtures": "node tests/fixtures/make-fixture.mjs"
   },
   "dependencies": {

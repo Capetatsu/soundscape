@@ -50,8 +50,12 @@ export const AccountSyncScreen: React.FC<AccountSyncScreenProps> = ({
   const [connectTab, setConnectTab] = useState<'oauth' | 'manual'>('oauth');
 
   // Exact callback URLs
-  const devCallbackUrl = REDIRECT_URI;
-  const sharedCallbackUrl = REDIRECT_URI;
+  const devCallbackUrl = 'http://127.0.0.1:3000/auth/callback';
+  const localhostCallbackUrl = 'http://localhost:3000/auth/callback';
+  const sharedCallbackUrl = typeof window !== 'undefined' && !window.location.origin.includes('127.0.0.1') && !window.location.origin.includes('localhost')
+    ? `${window.location.origin}/auth/callback`
+    : REDIRECT_URI;
+  const [copiedLocalhostUri, setCopiedLocalhostUri] = useState(false);
 
   useEffect(() => {
     setCustomClientId(clientId);
@@ -61,6 +65,12 @@ export const AccountSyncScreen: React.FC<AccountSyncScreenProps> = ({
     navigator.clipboard?.writeText(devCallbackUrl);
     setCopiedDevUri(true);
     setTimeout(() => setCopiedDevUri(false), 2500);
+  };
+
+  const handleCopyLocalhostUri = () => {
+    navigator.clipboard?.writeText(localhostCallbackUrl);
+    setCopiedLocalhostUri(true);
+    setTimeout(() => setCopiedLocalhostUri(false), 2500);
   };
 
   const handleCopySharedUri = () => {
@@ -312,7 +322,7 @@ export const AccountSyncScreen: React.FC<AccountSyncScreenProps> = ({
                 {/* Dev URI Box */}
                 <div className="space-y-1">
                   <div className="flex items-center justify-between text-[10px] text-[#c6c6c7]">
-                    <span className="font-semibold text-white/90">Development Callback URI:</span>
+                    <span className="font-semibold text-white/90">Development URI (127.0.0.1):</span>
                     {copiedDevUri && <span className="text-[#53e076] font-bold">Copied!</span>}
                   </div>
                   <div className="flex items-center gap-2 bg-[#1c1b1b] p-2 rounded-lg border border-white/10">
@@ -330,26 +340,52 @@ export const AccountSyncScreen: React.FC<AccountSyncScreenProps> = ({
                   </div>
                 </div>
 
-                {/* Shared URI Box */}
-                <div className="space-y-1 pt-1">
+                {/* Localhost URI Box */}
+                <div className="space-y-1 pt-0.5">
                   <div className="flex items-center justify-between text-[10px] text-[#c6c6c7]">
-                    <span className="font-semibold text-white/90">Shared / Deployed Callback URI:</span>
-                    {copiedSharedUri && <span className="text-[#53e076] font-bold">Copied!</span>}
+                    <span className="font-semibold text-white/90">Development URI (localhost):</span>
+                    {copiedLocalhostUri && <span className="text-[#53e076] font-bold">Copied!</span>}
                   </div>
                   <div className="flex items-center gap-2 bg-[#1c1b1b] p-2 rounded-lg border border-white/10">
                     <code className="text-[11px] font-mono text-[#53e076] truncate flex-1 select-all">
-                      {sharedCallbackUrl}
+                      {localhostCallbackUrl}
                     </code>
                     <button
                       type="button"
-                      onClick={handleCopySharedUri}
+                      onClick={handleCopyLocalhostUri}
                       className="px-2.5 py-1 rounded bg-[#2a2a2a] hover:bg-[#353534] text-[11px] font-bold text-[#e5e2e1] flex items-center gap-1 flex-shrink-0"
                     >
                       <span className="material-symbols-outlined text-xs">content_copy</span>
-                      <span>{copiedSharedUri ? 'Copied' : 'Copy'}</span>
+                      <span>{copiedLocalhostUri ? 'Copied' : 'Copy'}</span>
                     </button>
                   </div>
                 </div>
+
+                {/* Shared URI Box */}
+                {sharedCallbackUrl !== devCallbackUrl && sharedCallbackUrl !== localhostCallbackUrl && (
+                  <div className="space-y-1 pt-0.5">
+                    <div className="flex items-center justify-between text-[10px] text-[#c6c6c7]">
+                      <span className="font-semibold text-white/90">Deployed / Shared Callback URI:</span>
+                      {copiedSharedUri && <span className="text-[#53e076] font-bold">Copied!</span>}
+                    </div>
+                    <div className="flex items-center gap-2 bg-[#1c1b1b] p-2 rounded-lg border border-white/10">
+                      <code className="text-[11px] font-mono text-[#53e076] truncate flex-1 select-all">
+                        {sharedCallbackUrl}
+                      </code>
+                      <button
+                        type="button"
+                        onClick={handleCopySharedUri}
+                        className="px-2.5 py-1 rounded bg-[#2a2a2a] hover:bg-[#353534] text-[11px] font-bold text-[#e5e2e1] flex items-center gap-1 flex-shrink-0"
+                      >
+                        <span className="material-symbols-outlined text-xs">content_copy</span>
+                        <span>{copiedSharedUri ? 'Copied' : 'Copy'}</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+                <p className="text-[10px] text-amber-300/80 pt-1">
+                  💡 Tip: Add both <code className="text-white">127.0.0.1</code> and <code className="text-white">localhost</code> URIs above to your Spotify Dashboard so login works seamlessly.
+                </p>
               </div>
 
               {/* Step 3: Paste Client ID */}
@@ -558,7 +594,7 @@ export const AccountSyncScreen: React.FC<AccountSyncScreenProps> = ({
                   {user ? 'check' : 'radio_button_unchecked'}
                 </span>
               </div>
-              <span className="font-semibold text-[#e5e2e1]">Followed Artists & Saved Albums</span>
+              <span className="font-semibold text-[#e5e2e1]">User Profile & Device Context</span>
             </div>
             <span className={`font-mono text-[11px] ${user ? 'text-[#53e076] font-bold' : 'text-[#c6c6c7]'}`}>
               {user ? 'Complete' : 'Pending'}

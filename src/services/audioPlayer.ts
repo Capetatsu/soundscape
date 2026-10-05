@@ -1099,8 +1099,10 @@ export class AudioPlayerService {
     this.progressMs = Math.max(0, Math.min(this.durationMs, positionMs));
 
     if (this.isElementMode()) {
-      if (this.audioEl.src && this.audioEl.duration) {
-        this.audioEl.currentTime = positionMs / 1000;
+      if (this.audioEl.src) {
+        try {
+          this.audioEl.currentTime = positionMs / 1000;
+        } catch {}
       }
     } else if (this.webPlayer && this.playbackMode === 'sdk') {
       this.webPlayer.seek(positionMs).catch(() => {});
@@ -1156,7 +1158,8 @@ export class AudioPlayerService {
     const scopes = SpotifyAuthService.getScopes();
     const ctrl = this.controller.snapshot();
 
-    const isPremium = this.currentUser?.product === 'premium';
+    // Post-Feb 2026, Spotify removed `product` from GET /me; tier is detected via playback rejection (403).
+    const isKnownFree = this.currentUser?.product === 'free' || (this.lastError && this.lastError.code === 403);
     const isSpotifyPlayback = (this.playbackMode === 'sdk' || this.playbackMode === 'connect') && this.isPlaying;
     const isOpenPlayback =
       (this.playbackMode === 'audius' ||
@@ -1183,8 +1186,8 @@ export class AudioPlayerService {
       verdictReason = 'No Spotify session and nothing playing. The free catalogue needs no login — just search and play.';
     } else if (tokenExp.isExpired) {
       verdictReason = 'Spotify access token has expired and requires refresh.';
-    } else if (!isPremium) {
-      verdictReason = 'Account tier is Free. Spotify in-app playback needs Premium; the free catalogue plays without it.';
+    } else if (isKnownFree) {
+      verdictReason = 'Spotify in-app playback requires Premium (or received 403); the open catalogue plays freely without it.';
     } else if (this.lastError) {
       verdictReason = this.lastError.message;
     }

@@ -32,7 +32,9 @@ export async function recordPlaybackEnd(playedMs: number, completed: boolean): P
   });
 }
 
-export async function topTracks(limit = 10, sinceMs?: number): Promise<{ trackUri: string; plays: number; ms: number }[]> {  const events = await db.getListeningEvents(2000);
+export async function topTracks(limit = 10, sinceMs?: number): Promise<{ trackUri: string; plays: number; ms: number }[]> {
+  const fetchCount = Math.max(2000, limit * 200);
+  const events = await db.getListeningEvents(fetchCount);
   const map = new Map<string, { plays: number; ms: number }>();
   for (const e of events) {
     if (sinceMs && e.startedAt < sinceMs) continue;

@@ -151,29 +151,18 @@ export class SpotifyAuthService {
   }
 
   static getAccessToken(): string | null {
-    // BFF memory token first (never persisted); legacy localStorage second.
+    // Memory-only access token (Decision #5: never persisted to localStorage)
     if (this.memToken && Date.now() < this.memExpiresAt - 60_000) return this.memToken;
-    const token = localStorage.getItem(this.tokenKey);
-    const expiresAt = localStorage.getItem(this.expiresAtKey);
-    if (!token || !expiresAt) return null;
-    if (Date.now() > parseInt(expiresAt, 10)) {
-      // Token expired, attempt refresh in background if refresh token exists
-      return token; // will be handled or refreshed
-    }
-    return token;
+    return this.memToken;
   }
 
   static isTokenExpired(): boolean {
-    // BFF memory token counts as valid while unexpired (never persisted).
     if (this.memToken && Date.now() < this.memExpiresAt - 60_000) return false;
-    const expiresAt = localStorage.getItem(this.expiresAtKey);
-    if (!expiresAt) return true;
-    return Date.now() > parseInt(expiresAt, 10) - 60000; // 1 min buffer
+    return true;
   }
 
   static isAuthenticated(): boolean {
-    if (this.memToken && Date.now() < this.memExpiresAt - 60_000) return true;
-    return !!localStorage.getItem(this.tokenKey);
+    return !!(this.memToken && Date.now() < this.memExpiresAt - 60_000);
   }
 
   // PKCE Crypto Helpers
@@ -347,12 +336,13 @@ export class SpotifyAuthService {
   }
 
   private static saveTokens(data: { access_token: string; refresh_token?: string; expires_in: number }): void {
-    localStorage.setItem(this.tokenKey, data.access_token);
-    if (data.refresh_token) {
-      localStorage.setItem(this.refreshTokenKey, data.refresh_token);
-    }
-    const expiresAt = Date.now() + (data.expires_in || 3600) * 1000;
-    localStorage.setItem(this.expiresAtKey, expiresAt.toString());
+    // Decision #5: Tokens never reach localStorage.
+    this.memToken = data.access_token;
+    this.memExpiresAt = Date.now() + (data.expires_in || 3600) * 1000;
+    // Remove any legacy tokens from localStorage
+    localStorage.removeItem(this.tokenKey);
+    localStorage.removeItem(this.refreshTokenKey);
+    localStorage.removeItem(this.expiresAtKey);
   }
 
   static disconnect(): void {

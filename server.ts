@@ -88,12 +88,10 @@ function appOrigin(): string {
 
 // ---------- Spotify client config (no hardcoded fallback in prod paths) ----------
 const ENV_CLIENT_ID = (process.env.SPOTIFY_CLIENT_ID || '').trim();
-const LEGACY_FALLBACK_CLIENT_ID = '5822fb3ce1814fc4916d228c580a8a0a';
 function effectiveClientId(provided?: unknown): string | null {
   if (typeof provided === 'string' && /^[A-Za-z0-9]{16,64}$/.test(provided.trim())) return provided.trim();
   if (ENV_CLIENT_ID && /^[A-Za-z0-9]{16,64}$/.test(ENV_CLIENT_ID)) return ENV_CLIENT_ID;
-  // Legacy fallback retained only for local dev continuity; flagged in diagnostics.
-  return LEGACY_FALLBACK_CLIENT_ID;
+  return null;
 }
 
 // ---------- BFF session store (server-side token vault) ----------
@@ -161,10 +159,19 @@ function getSession(req: express.Request): ServerSession | null {
   return s;
 }
 
-// PKCE handshake store for BFF login (state -> verifier, 10 min TTL)
-const pkceStore = new Map<string, { verifier: string; expiresAt: number }>();
+// PKCE handshake store for BFF login (state -> { verifier, redirectUri }, 10 min TTL)
+const pkceStore = new Map<string, { verifier: string; redirectUri: string; expiresAt: number }>();
 function b64url(n: number): string {
   return crypto.randomBytes(n).toString('base64url');
+}
+
+const ALLOWED_REDIRECT_URIS = new Set<string>([
+  REDIRECT_URI,
+  'http://127.0.0.1:3000/auth/callback',
+  'http://localhost:3000/auth/callback'
+]);
+if (process.env.APP_URL && !process.env.APP_URL.includes('MY_APP_URL')) {
+  ALLOWED_REDIRECT_URIS.add(`${process.env.APP_URL.replace(/\/+$/, '')}/auth/callback`);
 }
 
 // Initialize server-side Gemini client
@@ -209,15 +216,21 @@ const SPOTIFY_SCOPES = [
   'user-read-currently-playing', 'user-read-recently-played', 'user-top-read'
 ].join(' ');
 
-app.get('/auth/spotify/login', rateLimit(10, 60_000), (_req, res) => {
+app.get('/auth/spotify/login', rateLimit(10, 60_000), (req, res) => {
   const clientId = effectiveClientId();
   if (!clientId) return res.status(500).json({ error: { code: 'no_client_id', message: 'Server Spotify client ID not configured', retryable: false } });
+
+  const host = req.get('host') || '';
+  const proto = (req.headers['x-forwarded-proto'] ?? (req.secure ? 'https' : 'http')).toString().split(',')[0];
+  const candidate = `${proto}://${host}/auth/callback`;
+  const redirectUri = ALLOWED_REDIRECT_URIS.has(candidate) ? candidate : REDIRECT_URI;
+
   const state = b64url(32);
   const verifier = b64url(64);
-  pkceStore.set(state, { verifier, expiresAt: Date.now() + 10 * 60_1000 });
+  pkceStore.set(state, { verifier, redirectUri, expiresAt: Date.now() + 10 * 60_000 });
   const challenge = crypto.createHash('sha256').update(verifier).digest('base64url');
   const params = new URLSearchParams({
-    client_id: clientId, response_type: 'code', redirect_uri: REDIRECT_URI,
+    client_id: clientId, response_type: 'code', redirect_uri: redirectUri,
     code_challenge_method: 'S256', code_challenge: challenge, state, scope: SPOTIFY_SCOPES
   });
   // state bound via HttpOnly cookie-less server map; verifier never leaves server
@@ -236,8 +249,9 @@ app.get('/auth/spotify/callback', rateLimit(10, 60_000), async (req, res) => {
   const clientId = effectiveClientId();
   if (!clientId) return res.status(500).send('Server client ID not configured');
   try {
+    const redirectUri = rec.redirectUri || REDIRECT_URI;
     const params = new URLSearchParams({
-      grant_type: 'authorization_code', code, redirect_uri: REDIRECT_URI,
+      grant_type: 'authorization_code', code, redirect_uri: redirectUri,
       client_id: clientId, code_verifier: rec.verifier
     });
     const tokenRes = await fetch('https://accounts.spotify.com/api/token', {
@@ -339,7 +353,8 @@ app.post('/api/auth/token', rateLimit(10, 60_000), async (req, res) => {
     if (!code || !code_verifier) {
       return res.status(400).json({ error: 'Missing code or code_verifier' });
     }
-    if (redirect_uri !== REDIRECT_URI) {
+    const reqRedirectUri = String(redirect_uri || '');
+    if (!ALLOWED_REDIRECT_URIS.has(reqRedirectUri)) {
       return res.status(400).json({ error: 'Invalid redirect_uri' });
     }
     const resolvedClientId = effectiveClientId(client_id);
@@ -347,7 +362,7 @@ app.post('/api/auth/token', rateLimit(10, 60_000), async (req, res) => {
     const params = new URLSearchParams({
       grant_type: 'authorization_code',
       code: String(code),
-      redirect_uri: REDIRECT_URI,
+      redirect_uri: reqRedirectUri,
       client_id: resolvedClientId,
       code_verifier: String(code_verifier)
     });
@@ -436,7 +451,7 @@ app.post('/api/ai/dj', rateLimit(10, 60_000), async (req, res) => {
     `;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3.8-flash',
+      model: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
       contents: userPrompt,
       config: {
         systemInstruction,

@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { SpotifyPlaylist, SpotifyTrack } from '../types';
 import { SpotifyApiClient } from '../services/spotifyApi';
+import { db } from '../core/db/database';
+import { dbTrackToUi } from '../core/sync/toUi';
 
 interface PlaylistDetailScreenProps {
   playlist: SpotifyPlaylist;
@@ -33,7 +35,7 @@ export const PlaylistDetailScreen: React.FC<PlaylistDetailScreenProps> = ({
   const [isSaved, setIsSaved] = useState(playlist.isSaved ?? true);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  // If initialTracks is empty and it's not liked-songs, fetch real playlist tracks from Spotify
+  // If initialTracks is empty and it's not liked-songs, check IndexedDB first, then Spotify API
   useEffect(() => {
     let isMounted = true;
     setLoadError(null);
@@ -41,14 +43,36 @@ export const PlaylistDetailScreen: React.FC<PlaylistDetailScreenProps> = ({
       setTracks(initialTracks);
     } else if (playlist.id && playlist.id !== 'liked-songs') {
       setIsLoading(true);
-      SpotifyApiClient.getPlaylist(playlist.id)
-        .then((fullPl) => {
+      const playlistUri = playlist.uri || `spotify:playlist:${playlist.id}`;
+
+      // 1. Try local IndexedDB cache first
+      db.getPlaylistTrackRows(playlistUri)
+        .then(async (rows) => {
           if (!isMounted) return;
-          const items = fullPl.tracks?.items || [];
-          const loadedTracks: SpotifyTrack[] = items
-            .map((item: any) => item.track)
-            .filter(Boolean);
-          setTracks(loadedTracks);
+          if (rows && rows.length > 0) {
+            const sortedUris = rows.sort((a, b) => a.position - b.position).map((r) => r.trackUri);
+            const dbTracks = await db.getTracksByUris(sortedUris);
+            const trackMap = new Map(dbTracks.map((t) => [t.uri, t]));
+            const cachedTracks = sortedUris
+              .map((u) => trackMap.get(u))
+              .filter(Boolean)
+              .map((t) => dbTrackToUi(t!));
+            if (cachedTracks.length > 0 && isMounted) {
+              setTracks(cachedTracks);
+              setIsLoading(false);
+              return;
+            }
+          }
+
+          // 2. Fall back to live Spotify API if not in local DB
+          return SpotifyApiClient.getPlaylist(playlist.id).then((fullPl) => {
+            if (!isMounted) return;
+            const items = fullPl.tracks?.items || [];
+            const loadedTracks: SpotifyTrack[] = items
+              .map((item: any) => item.track)
+              .filter(Boolean);
+            setTracks(loadedTracks);
+          });
         })
         .catch((err) => {
           console.warn('Could not load playlist tracks:', err);
@@ -71,7 +95,7 @@ export const PlaylistDetailScreen: React.FC<PlaylistDetailScreenProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [playlist.id, initialTracks]);
+  }, [playlist.id, playlist.uri, initialTracks]);
 
   // Write-through save/unsave (Spotify first, local state only on success).
   const handleToggleSave = async () => {

@@ -1,4 +1,7 @@
 import { BaseProvider, type Capability } from '../types';
+import { SpotifyAuthService } from '../../../services/spotifyAuth';
+import { subsonicConfigured } from '../subsonic/subsonicClient';
+import { jamendoConfigured } from '../jamendo/jamendoClient';
 
 // Normative capability matrix (06). Unit-tested expectation:
 // - Web API: account/library YES, search YES (<=10/page), lyrics NO, download NO.
@@ -10,12 +13,19 @@ const SPOTIFY_WEB_CAPS: Capability[] = [
 export class SpotifyProvider extends BaseProvider {
   readonly id = 'spotify' as const;
   readonly caps: ReadonlySet<Capability> = new Set(SPOTIFY_WEB_CAPS);
+  override status() {
+    const isAuthed = SpotifyAuthService.isAuthenticated();
+    return {
+      connected: isAuthed,
+      detail: isAuthed ? 'Authenticated with Spotify Web API' : 'Not connected'
+    };
+  }
 }
 
 export class LocalProvider extends BaseProvider {
   readonly id = 'local' as const;
   readonly caps: ReadonlySet<Capability> = new Set<Capability>([
-    'search', 'metadata', 'lyrics', 'playback', 'download'
+    'search', 'metadata', 'playback', 'download'
   ]);
   override status() {
     return { connected: true, detail: 'local files (browser File API)' };
@@ -28,8 +38,11 @@ export class SubsonicProvider extends BaseProvider {
     'auth', 'library', 'search', 'metadata', 'lyrics', 'playback', 'devices', 'download', 'write'
   ]);
   override status() {
-    // Configured per session; the UI reports live connection state.
-    return { connected: true, detail: 'Navidrome/Jellyfin/Gonic (session config)' };
+    const ok = subsonicConfigured();
+    return {
+      connected: ok,
+      detail: ok ? 'Navidrome/Jellyfin/Gonic configured' : 'Not configured'
+    };
   }
 }
 
@@ -58,7 +71,11 @@ export class JamendoProvider extends BaseProvider {
     'search', 'metadata', 'playback', 'recommendations', 'lyrics', 'download'
   ]);
   override status() {
-    return { connected: true, detail: 'open catalog, client_id required (P-B)' };
+    const ok = jamendoConfigured();
+    return {
+      connected: ok,
+      detail: ok ? 'open catalog, client_id active (P-B)' : 'client_id required (P-B)'
+    };
   }
 }
 

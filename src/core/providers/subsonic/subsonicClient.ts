@@ -54,7 +54,7 @@ export function subsonicConfigured(): boolean {
 }
 
 /** Subsonic MD5 token auth (salted). Never persisted beyond session storage. */
-async function authParams(cfg: SubsonicConfig, extra: Record<string, string> = {}): Promise<URLSearchParams> {
+export function authParams(cfg: SubsonicConfig, extra: Record<string, string> = {}): URLSearchParams {
   const salt = crypto.randomUUID().replace(/-/g, '');
   return new URLSearchParams({
     u: cfg.user,
@@ -65,6 +65,14 @@ async function authParams(cfg: SubsonicConfig, extra: Record<string, string> = {
     f: 'json',
     ...extra
   });
+}
+
+/** Builds an authenticated absolute Subsonic REST URL. */
+export function subsonicUrl(cfg: SubsonicConfig, path: string, extra: Record<string, string> = {}): string {
+  const params = authParams(cfg, extra);
+  const base = cfg.server.replace(/\/+$/, '');
+  const sep = path.includes('?') ? '&' : '?';
+  return `${base}/rest/${path}${sep}${params.toString()}`;
 }
 
 function hex(bytes: Uint8Array): string {
@@ -108,11 +116,8 @@ function md5(message: string): string {
 }
 
 async function call<T>(cfg: SubsonicConfig, endpoint: string, extra: Record<string, string> = {}): Promise<T> {
-  const base = cfg.server.replace(/\/+$/, '');
-  const salt = crypto.randomUUID().replace(/-/g, '');
-  const token = md5(cfg.pass + salt);
-  const params = new URLSearchParams({ u: cfg.user, t: token, s: salt, v: '1.16.1', c: 'Soundscape', f: 'json', ...extra });
-  const res = await fetch(`${base}/rest/${endpoint}?${params.toString()}`, { signal: AbortSignal.timeout(12000) });
+  const url = subsonicUrl(cfg, endpoint, extra);
+  const res = await fetch(url, { signal: AbortSignal.timeout(12000) });
   if (!res.ok) throw new SubsonicError(`Server returned HTTP ${res.status}`, `http_${res.status}`);
   const json = (await res.json()) as Record<string, unknown>;
   const root = json['subsonic-response'] as { status?: string; error?: { code?: number; message?: string } } | undefined;
@@ -137,7 +142,7 @@ interface RawChild {
   coverArt?: string;
 }
 
-function mapChild(raw: RawChild): SubsonicTrack | null {
+function mapChild(cfg: SubsonicConfig, raw: RawChild): SubsonicTrack | null {
   if (raw.isDir) return null;
   return {
     id: raw.id,
@@ -147,13 +152,13 @@ function mapChild(raw: RawChild): SubsonicTrack | null {
     artistId: raw.artistId || null,
     albumId: raw.albumId || null,
     durationSec: raw.duration ? Math.round(raw.duration) : 0,
-    coverUrl: raw.coverArt ? `coverArt?id=${encodeURIComponent(raw.coverArt)}` : null,
-    streamUrl: `stream?id=${encodeURIComponent(raw.id)}`
+    coverUrl: raw.coverArt ? subsonicUrl(cfg, `getCoverArt?id=${encodeURIComponent(raw.coverArt)}`) : null,
+    streamUrl: subsonicUrl(cfg, `stream?id=${encodeURIComponent(raw.id)}`)
   };
 }
 
 async function search3<T>(cfg: SubsonicConfig, query: string, artistCount: number, artistOffset: number, albumCount: number, albumOffset: number, songCount: number, songOffset: number): Promise<T> {
-  const params = await authParams(cfg, {
+  const url = subsonicUrl(cfg, 'search3', {
     query,
     artistCount: String(artistCount),
     artistOffset: String(artistOffset),
@@ -162,8 +167,7 @@ async function search3<T>(cfg: SubsonicConfig, query: string, artistCount: numbe
     songCount: String(songCount),
     songOffset: String(songOffset)
   });
-  const base = cfg.server.replace(/\/+$/, '');
-  const res = await fetch(`${base}/rest/search3?${params.toString()}`, { signal: AbortSignal.timeout(12000) });
+  const res = await fetch(url, { signal: AbortSignal.timeout(12000) });
   if (!res.ok) throw new SubsonicError(`Server returned HTTP ${res.status}`, `http_${res.status}`);
   const json = (await res.json()) as Record<string, unknown>;
   const root = json['subsonic-response'] as { status?: string; error?: { message?: string; code?: number } } | undefined;
@@ -181,12 +185,5 @@ export async function subsonicSearch(cfg: SubsonicConfig, query: string, limit =
     'subsonic-response': { searchResult3?: { song?: RawChild[] } };
   }>(cfg, query, 0, 0, 0, 0, limit, 0);
   const songs = res['subsonic-response']?.searchResult3?.song ?? [];
-  return songs.map(mapChild).filter((t): t is SubsonicTrack => !!t);
-}
-
-/** Cover art URL requires auth params — resolved by the caller through `subsonicUrl`. */
-export async function subsonicUrl(cfg: SubsonicConfig, path: string): Promise<string> {
-  const params = await authParams(cfg, path.includes('?') ? {} : {});
-  const base = cfg.server.replace(/\/+$/, '');
-  return `${base}/rest/${path}${path.includes('?') ? '&' : '?'}${params.toString()}`;
+  return songs.map((s) => mapChild(cfg, s)).filter((t): t is SubsonicTrack => !!t);
 }

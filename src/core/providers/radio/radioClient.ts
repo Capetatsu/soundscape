@@ -94,6 +94,7 @@ export async function radioTopStations(limit = 12): Promise<RadioStation[]> {
   return data
     .map(mapStation)
     .filter((s): s is RadioStation => !!s)
+    .sort((a, b) => rankCodec(a.codec) - rankCodec(b.codec) || b.votes - a.votes)
     .slice(0, limit);
 }
 
@@ -115,7 +116,7 @@ export function radioCountClick(uuid: string): void {
     for (const base of SERVERS) {
       try {
         await fetch(`${base}${path}`, {
-          method: 'POST',
+          method: 'GET',
           signal: AbortSignal.timeout(8000),
           headers: { 'User-Agent': UA }
         });

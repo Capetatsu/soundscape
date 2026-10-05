@@ -124,7 +124,7 @@ export const App: React.FC = () => {
   // Real library sync via SyncEngine (M4): paged playlists/items/liked,
   // quick-check resync, per-playlist checkpoints, true DB-diff report.
   // The UI renders ONLY what the engine persisted to IndexedDB.
-  const syncWithSpotify = useCallback(async () => {
+  const syncWithSpotify = useCallback(async (trigger: 'manual' | 'startup' | 'focus' | 'auto' = 'manual') => {
     if (!SpotifyAuthService.isAuthenticated()) return;
     if (!navigator.onLine) {
       setPlaybackNotice('Offline — showing your cached library. Sync is paused until reconnect.');
@@ -151,7 +151,7 @@ export const App: React.FC = () => {
 
       // 2+3. Playlists + liked songs via SyncEngine (real pagination + diff).
       const engine = new SyncEngine(accountId, getToken, me.id);
-      const report = await engine.run('manual');
+      const report = await engine.run(trigger);
       setSyncReport(report);
       setLastSyncAt(report.endedAt);
       if (report.errors.length > 0) {
@@ -320,10 +320,48 @@ export const App: React.FC = () => {
     // Returning BFF session (page reload with valid HttpOnly cookie).
     SpotifyAuthService.initBffSession().then((state) => {
       if (state === 'connected' || state === 'legacy') {
-        syncWithSpotify();
+        syncWithSpotify('startup');
       }
     });
   }, [syncWithSpotify]);
+
+  // Auto-sync scheduler per 10_LIBRARY_SYNC.md:
+  // - on startup if >15 min since last sync
+  // - on tab focus (visibilitychange) if >15 min
+  // - periodic interval while tab open (30 min)
+  useEffect(() => {
+    if (!SpotifyAuthService.isAuthenticated()) return;
+
+    const FIFTEEN_MINUTES = 15 * 60 * 1000;
+    const THIRTY_MINUTES = 30 * 60 * 1000;
+
+    const checkAndSync = (trigger: 'startup' | 'focus') => {
+      const now = Date.now();
+      if (!lastSyncAt || now - lastSyncAt > FIFTEEN_MINUTES) {
+        void syncWithSpotify(trigger);
+      }
+    };
+
+    // Tab focus / visibilitychange
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        checkAndSync('focus');
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    // 30-minute interval while tab is open
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible' && !isSyncing) {
+        void syncWithSpotify('auto');
+      }
+    }, THIRTY_MINUTES);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      clearInterval(interval);
+    };
+  }, [lastSyncAt, isSyncing, syncWithSpotify]);
 
   // Archive recordings: resolved file lists cached per identifier.
   const archiveFiles = useRef(new Map<string, { title: string; artist: string; format: string; url: string }[]>());

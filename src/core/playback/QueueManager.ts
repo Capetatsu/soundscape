@@ -7,7 +7,7 @@ export type RepeatMode = 'off' | 'all' | 'one';
 export interface QueueItem {
   track: TrackRef;
   contextUri: string | null;
-  source: 'spotify' | 'local' | 'subsonic';
+  source: 'spotify' | 'local' | 'subsonic' | 'audius' | 'jamendo' | 'archive' | 'radio';
 }
 
 export class QueueManager {
@@ -39,10 +39,6 @@ export class QueueManager {
 
   current(): QueueItem | null {
     if (this.index < 0 || this.index >= this.items.length) return null;
-    if (this.shuffle) {
-      const pos = this.order.indexOf(this.index);
-      void pos;
-    }
     return this.items[this.index];
   }
 
@@ -90,6 +86,9 @@ export class QueueManager {
 
   removeAt(i: number): void {
     this.items.splice(i, 1);
+    this.history = this.history
+      .filter((h) => h !== i)
+      .map((h) => (h > i ? h - 1 : h));
     if (this.index >= this.items.length) this.index = this.items.length - 1;
     this.rebuildOrder();
   }
