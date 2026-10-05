@@ -88,6 +88,10 @@ items are shown text-only and can never be played.
 - Jamendo activates with a free read-only `client_id` (`VITE_JAMENDO_CLIENT_ID`, or paste
   it in Settings). Without one the provider stays off and says so. Jamendo's own public
   demo key is suspended by Jamendo, so it does not work as a default.
+- Jamendo's free tier intermittently answers an identical query with HTTP 200 and zero
+  results (measured: roughly half of calls). Soundscape retries once, which recovers it.
+  A first Jamendo play also costs one extra request to resolve the best available file
+  (FLAC when the artist provides it), so it starts a beat slower than Audius.
 - Live recordings vary in quality; the UI says so instead of hiding it.
 - Radio is live-only (no skipping, no on-demand).
 - Device-file audio doesn't survive a page reload (browser blob URLs) — metadata does; re-adding a file restores it.
