@@ -82,6 +82,18 @@ export const App: React.FC = () => {
   const [syncReport, setSyncReport] = useState<SyncReport | null>(null);
   const [lastSyncAt, setLastSyncAt] = useState<number | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
+  const [isOnline, setIsOnline] = useState<boolean>(() => (typeof navigator !== 'undefined' ? navigator.onLine : true));
+
+  useEffect(() => {
+    const on = () => setIsOnline(true);
+    const off = () => setIsOnline(false);
+    window.addEventListener('online', on);
+    window.addEventListener('offline', off);
+    return () => {
+      window.removeEventListener('online', on);
+      window.removeEventListener('offline', off);
+    };
+  }, []);
 
   // Audio Settings
   const [audioSettings, setAudioSettings] = useState<AudioSettings>({
@@ -836,6 +848,16 @@ export const App: React.FC = () => {
           />
         )}
       </main>
+
+      {/* Offline banner: cached content keeps working, network features pause honestly */}
+      {!isOnline && (
+        <div className="mx-4 mt-2 p-3 rounded-xl bg-[#201f1f] border border-amber-500/30 flex items-center gap-2">
+          <span className="material-symbols-outlined text-amber-400 text-lg">wifi_off</span>
+          <p className="text-[11px] text-amber-200">
+            You're offline. Your files, downloaded metadata, lyrics cache, playlists and stats keep working — streaming and sync resume on reconnect.
+          </p>
+        </div>
+      )}
 
       {/* Stale-library banner (>24h since last sync) */}
       {user && lastSyncAt && Date.now() - lastSyncAt > 24 * 3600_000 && !isSyncing && (

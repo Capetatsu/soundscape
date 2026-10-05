@@ -20,11 +20,12 @@ No account, no API keys needed for the default experience: open Search or Home a
 | Source | What you get | Requirements |
 |---|---|---|
 | **Audius** (default) | Full-length tracks, trending, search | None — open catalogue, no login |
-| **Jamendo** (next) | Full-length tracks, up to **FLAC** | Free `client_id` from devportal.jamendo.com (owner supplies once) |
+| **Jamendo** | Full-length tracks, up to **FLAC** (FLAC-first optional) | Free `client_id` from devportal.jamendo.com — Settings → Jamendo free catalogue, or `VITE_JAMENDO_CLIENT_ID`. Without it the provider stays off, honestly. |
 | **Internet Archive** | Full live concerts + netlabel releases (quality varies — live tapes, stated honestly) | None |
 | **Live radio** | 30k+ community stations (live, unskippable, HTTPS streams) | None |
 | **Your files** | FLAC/MP3/AAC/WAV/OGG from this device + 3-band EQ + loudness normalization | None |
-| **Your server** | Subsonic/Navidrome/Jellyfin (connection test built in; browsing streams planned) | Your own server |
+| **Your server** | Subsonic/Navidrome/Jellyfin/Gonic search + streaming + cover art | Your own server (Settings → Your music server, session-only credentials) |
+| **Your playlists** | Create/rename/delete/add/remove/reorder/play/queue, stored on device | None |
 | **Spotify** (optional) | Library import, playlists, liked songs, artwork, metadata — **not playback** | Free Spotify account; Premium only if you want in-app Spotify audio on a real device |
 
 There is deliberately **no major-label studio catalogue** in the free path: no
@@ -79,9 +80,11 @@ items are shown text-only and can never be played.
 ## Known limitations
 
 - Open catalogues are independent music: you won't find major-label studio albums there.
+- Jamendo activates with a free `client_id`; its public test key is suspended by Jamendo, so the owner's key is required for a live test.
 - Live recordings vary in quality; the UI says so instead of hiding it.
 - Radio is live-only (no skipping, no on-demand).
+- Device-file audio doesn't survive a page reload (browser blob URLs) — metadata does; re-adding a file restores it.
 - Mobile background playback follows OS/browser media rules; the framework-free
   `src/core/` is ready for a future native shell.
+- Crossfade, bit-perfect passthrough: honestly deferred, never claimed.
 - Listen Together: roadmap item, shown as coming soon.
-- Jamendo activates when the owner adds a free `client_id`.

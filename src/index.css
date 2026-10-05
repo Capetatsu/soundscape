@@ -75,6 +75,16 @@
   scrollbar-width: none;
 }
 
+/* Icon-font failure guard: if Material Symbols can't load (offline/CDN blocked),
+   the raw ligature text must never spill out of its button and break taps. */
+button {
+  overflow: hidden;
+}
+.material-symbols-outlined {
+  font-display: block;
+  white-space: nowrap;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;

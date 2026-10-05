@@ -91,11 +91,34 @@
 - [x] P-A Audius: client (search/trending/official stream), registry, federated search section, trending shelf, playOpenTrack routing — VERIFIED LIVE (search + audio/mpeg stream)
 - [x] Spotify demotion: preview fallback REMOVED everywhere (player, labels, diagnostics); honest free-catalogue guidance
 - [x] Removed dead removed-endpoint calls (Spotify browse/new-releases shelves → Audius trending)
-- [ ] P-B Jamendo (needs owner's free client_id from devportal.jamendo.com) + FLAC preference
+- [x] P-B Jamendo: full client (search, FLAC-first resolve, charts, lyrics, artwork) + Settings config + search/Home/play integration + clean disabled state. Code-verified; LIVE TEST BLOCKED (no key; Jamendo's public test key is suspended)
 - [x] P-C Internet Archive provider (etree + netlabels search, per-track resolve with VBR-MP3-first preference, Play-set queues rest) — VERIFIED LIVE
 - [x] P-D Radio Browser mode (search/top/tags, HTTPS non-HLS filter, click etiquette, Radio tab) — VERIFIED LIVE
-- [x] README rewritten for Option A
+- [x] README rewritten for Option A (updated: Jamendo config, Subsonic streaming, native playlists)
 - [x] FULL PASS: tsc clean, production build green (66 modules, 441KB/116KB gzip), no-mock grep clean, server smoke green (healthz/config/status/CSP)
+
+## MASTER MISSION — final completion pass (2026-10-05)
+- [x] P0 baseline: tree clean, npm install up-to-date, tsc clean, build green
+- [x] P1 Jamendo (see above; live test needs owner's key)
+- [x] P2 capability model: registry describeProviders + jamendo effective caps; Diagnostics matrix + server config cards
+- [x] P3 unified search: merged ranking (Jamendo→Audius), exact-duplicate merge, per-row source+quality badges, load-more pagination
+- [x] P4 Home: real Recently-played shelf (listening events + track store), Spotify shelf demoted to small upsell
+- [x] P5 player: volume+mute in full player, real shuffle/repeat for open playback, buffering notices, Escape everywhere, queue-add + playlist-add from search
+- [x] P6 quality: per-source truthful labels (Jamendo FLAC/MP3, Audius MP3, Archive format in notice, radio codec/bitrate, local ext); lossless option reframed honestly
+- [x] P7 engine: transparent safety limiter (peaks only); crossfade stays honestly deferred
+- [x] P8 local library: Artist-Title parsing, collision-free IDs, DB-backed device shelf, honest re-add flow
+- [x] P9 lyrics: provider lyrics preferred, follow/pause toggle, LRCLIB fallback, honest states
+- [x] P10 stats: skip counters, recentPlays API feeding Home
+- [x] P12 native playlists: CRUD + reorder + play/queue + picker + duplicate-safe, persisted in IndexedDB
+- [x] P17 Subsonic: MD5 token auth, ping, search3, stream + cover-art URLs, session-only creds, plays via normal player
+- [x] P14 offline banner (online/offline events, honest capability note)
+- [x] P21 security: no eval/innerHTML/secrets (grep clean); redacted token-exchange logging; postMessage origin check intact
+- [x] P20 a11y: 40px tap targets on search rows, aria-labels on icon buttons, Escape everywhere, prefers-reduced-motion
+- [ ] P26 master E2E re-run to completion (IN PROGRESS)
+- [ ] P18/P19 final visual sweep from fresh screenshots
+- [ ] P22 perf sign-off (bundle + lifecycle review)
+- [ ] P23 resilience test (provider failure isolation + offline mode)
+- [ ] P27 production server verify + P28 docs final
 
 ## M11+ — Social / Devices / Perf / Release- [x] Social deferred with clean placeholder (Listen Together coming-soon, no fake sessions)
 - [x] Device control is real Spotify Connect transfer (existing path kept, volume via API)
