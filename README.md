@@ -89,9 +89,11 @@ items are shown text-only and can never be played.
   it in Settings). Without one the provider stays off and says so. Jamendo's own public
   demo key is suspended by Jamendo, so it does not work as a default.
 - Jamendo's free tier intermittently answers an identical query with HTTP 200 and zero
-  results (measured: roughly half of calls). Soundscape retries once, which recovers it.
-  A first Jamendo play also costs one extra request to resolve the best available file
-  (FLAC when the artist provides it), so it starts a beat slower than Audius.
+  results (measured: roughly half of calls). Soundscape retries up to 4 attempts before
+  concluding a query has no matches, which recovers nearly all of them. Because the search
+  response already carries a playable URL, a Jamendo track found by searching starts without
+  any extra request. Only a cold track id — and the FLAC upgrade when "FLAC first" is enabled —
+  costs an additional resolve request, which is where the latency shows up.
 - Live recordings vary in quality; the UI says so instead of hiding it.
 - Radio is live-only (no skipping, no on-demand).
 - Device-file audio doesn't survive a page reload (browser blob URLs) — metadata does; re-adding a file restores it.

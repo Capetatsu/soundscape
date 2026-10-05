@@ -9,7 +9,13 @@
     "start": "node dist/server.cjs",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test:e2e": "node tests/e2e/master-e2e.mjs",
+    "test:resilience": "node tests/resilience/resilience.mjs",
+    "test:providers": "node tests/providers/provider-coverage.mjs && node tests/providers/archive-honesty.mjs",
+    "test:jamendo": "node tests/jamendo/flac-truth.mjs && node tests/jamendo/first-play-rate.mjs",
+    "test:all": "npm run test:e2e && npm run test:resilience && npm run test:providers && npm run test:jamendo",
+    "test:fixtures": "node tests/fixtures/make-fixture.mjs"
   },
   "dependencies": {
     "@fontsource/material-symbols-outlined": "^5.3.8",
@@ -30,6 +36,7 @@
     "@types/react-dom": "^19.2.7",
     "autoprefixer": "^10.4.21",
     "esbuild": "^0.25.0",
+    "playwright-core": "^1.63.0",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",

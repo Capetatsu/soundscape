@@ -1,0 +1,10 @@
+# Run artifacts (screenshots) — regenerated on every run, never committed.
+.output/
+
+# Generated local-file fixture (pure PCM, recreated by fixtures/make-fixture.mjs).
+fixtures/fixture-5s.wav
+
+# Optional real media a developer may drop in locally.
+fixtures/fixture-test.flac
+fixtures/fixture-test.mp3
+fixtures/fixture-test.ogg
