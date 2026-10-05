@@ -414,6 +414,14 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({
                       Full tracks{jamendoConfigured() ? ' · Jamendo + Audius' : ' · Audius'}
                     </span>
                   </div>
+                  {/* Per-source honesty: say which provider is down even when other providers
+                      still answered. Gating this on "no results at all" meant that once Jamendo
+                      filled the list, a dead Audius became completely invisible. */}
+                  {audiusFailed && freeTracks.length > 0 && (
+                    <p className="text-[11px] text-amber-300/90 mb-2">
+                      Audius is unreachable right now — results below are from the other sources only.
+                    </p>
+                  )}
                   {audiusFailed && freeTracks.length === 0 ? (
                     <p className="text-xs text-[#c6c6c7] py-3">
                       Free catalogue is unreachable right now. Spotify results (if connected) still work for discovery.

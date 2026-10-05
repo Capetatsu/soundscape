@@ -155,7 +155,7 @@
       `.material-symbols-outlined` utility class fontsource doesn't ship, and dropped all
       external font origins from prod CSP (`font-src 'self'`). Verified: 15 icons glyph-shaped,
       `@font-face` loaded, zero requests to fonts.googleapis/gstatic.
-- [x] P26 MASTER E2E: **29/29 green** on the production build — load, no console errors,
+- [x] P26 MASTER E2E: **30/30 green** on the production build — load, no console errors,
       catalogue search, full-length play, trusted-drag seek (clock 176s), volume+mute,
       queue list + Escape close, next/previous, playlist create/add/list/open/play-all,
       lyrics honest state, radio live stream, local FLAC, stats, Jamendo "not configured",
@@ -169,6 +169,12 @@
       "unreachable" note; Archive down → free catalogue still serves; offline → banner
       shows AND local file keeps playing; unreachable server → honest "Not connected".
       Zero crashes in every scenario.
+      Caught a real honesty regression here: the Audius failure note was gated on
+      `freeTracks.length === 0`, so once Jamendo filled the list a dead Audius became
+      *completely invisible* to the user. Now a per-source note states which provider is
+      down even when the others answered. Second time a newly-enabled provider exposed a
+      latent gap (first was the always-empty Home chart) — worth re-running resilience
+      after any provider is switched on.
 - [x] P27 production server verified (healthz green, strict CSP, lazy SDK means a
       logged-out session loads no third-party script)
 - [x] P28 docs final: 28_DEFINITION_OF_DONE re-baselined to Option A reality,
@@ -197,12 +203,14 @@
 - [x] Committed: 3 logical commits on main
 
 ## Blocked on live credentials (implemented + failure-path tested, needs a real account)
-- [ ] Jamendo live search/playback — set `JAMENDO_CLIENT_ID` (free read-only plan at
-      devportal.jamendo.com) or paste it in Settings → Jamendo. Jamendo's own public
-      test key `709fa152` now returns "Application Suspended", so a real key is required.
-- [ ] M2 E2E: login → status connected → token → logout destroys session
+- [x] Jamendo live search/playback — **CLEARED** via owner's read-only key (`acde4470`,
+      in `.env` as `VITE_JAMENDO_CLIENT_ID`, gitignored). 8/8 first-play rate measured.
+- [ ] M2 E2E: login → status connected → token → logout destroys session (Spotify only)
 - [ ] M4/M5 live pass: real playlist sync counts + audible SDK playback on Premium desktop Chrome
 - How to clear: set `SPOTIFY_CLIENT_ID` + REDIRECT_URI, `npm run dev`, Connect Spotify, Sync Now, play a track.
+- Note: nothing in the core product depends on these two. Spotify is library/metadata only;
+      every playback path (Audius, Jamendo, Archive, radio, local files, your own server)
+      is verified working without any Spotify account.
 
 ## Working commands
 - `npx tsc --noEmit` — typecheck (currently clean)
