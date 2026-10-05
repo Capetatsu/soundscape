@@ -1,5 +1,14 @@
 import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
+// Self-hosted fonts. Bundled deliberately instead of linked from Google Fonts: a blocked,
+// throttled, or bot-gated font CDN turns every Material Symbols ligature into visible raw
+// text ("play_arrow") across the whole app and leaves icons overlapping their buttons.
+import '@fontsource/plus-jakarta-sans/400.css';
+import '@fontsource/plus-jakarta-sans/500.css';
+import '@fontsource/plus-jakarta-sans/600.css';
+import '@fontsource/plus-jakarta-sans/700.css';
+import '@fontsource/plus-jakarta-sans/800.css';
+import '@fontsource/material-symbols-outlined/400.css';
 import App from './App.tsx';
 import {ErrorBoundary} from './components/ErrorBoundary.tsx';
 import './index.css';

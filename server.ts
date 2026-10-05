@@ -40,8 +40,9 @@ app.use((_req, res, next) => {
     isProd
       ? "script-src 'self' https://sdk.scdn.co"
       : "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://sdk.scdn.co",
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-    "font-src 'self' https://fonts.gstatic.com data:",
+    // Fonts are bundled (see src/main.tsx), so no external font origin is granted.
+    "style-src 'self' 'unsafe-inline'",
+    "font-src 'self' data:",
     // Images are passive content: any HTTPS artwork/favicon is safe to render.
     "img-src 'self' https: data: blob:",
     // Audio elements need arbitrary HTTPS streams (radio + archive hosts).
