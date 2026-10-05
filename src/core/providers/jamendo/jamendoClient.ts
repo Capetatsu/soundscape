@@ -102,16 +102,30 @@ async function call(path: string, params: Record<string, string>): Promise<{ res
   return res.json();
 }
 
-/** Search tracks. One request, MP3 VBR (universal). FLAC upgrade happens at play time. */
+/** Search tracks. One request, MP3 VBR (universal). FLAC upgrade happens at play time.
+ *
+ *  Measured 2026-10-05: Jamendo's free read-only tier intermittently answers an identical
+ *  query with HTTP 200 + `results_count: 0` (roughly half of calls in testing, alternating
+ *  10/0/10/0...). That is upstream flakiness, not an empty result set. One short retry
+ *  recovers it; without the retry the UI silently showed Audius-only results for half of all
+ *  searches even though Jamendo had matches.
+ */
 export async function jamendoSearchTracks(query: string, limit = 10, offset = 0): Promise<JamendoTrack[]> {
-  const data = await call('/tracks/', {
+  const params = {
     search: query.slice(0, 100),
     include: 'musicinfo+licenses',
     audioformat: 'mp32',
     limit: String(Math.min(20, Math.max(1, limit))),
     offset: String(Math.max(0, offset))
-  });
-  return (data.results ?? []).map((r) => mapTrack(r, 'mp32')).filter((t): t is JamendoTrack => !!t);
+  };
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const data = await call('/tracks/', params);
+    const mapped = (data.results ?? []).map((r) => mapTrack(r, 'mp32')).filter((t): t is JamendoTrack => !!t);
+    if (mapped.length > 0 || attempt === 1) return mapped;
+    // Spurious empty response — retry once before concluding the query has no matches.
+    await new Promise((r) => setTimeout(r, 350));
+  }
+  return [];
 }
 
 /** Resolve the best playable file for a track (FLAC when preferred AND provided). */
@@ -132,17 +146,31 @@ export async function jamendoResolveTrack(id: string): Promise<JamendoTrack> {
   return t;
 }
 
-/** Popular chart for discovery shelves (featured selections by Jamendo managers). */
-export async function jamendoChart(tag = 'electronic', limit = 8): Promise<JamendoTrack[]> {
-  const data = await call('/tracks/', {
-    tags: tag,
-    featured: '1',
-    boost: 'popularity_month',
-    groupby: 'artist_id',
+/** Popularity chart for discovery shelves.
+ *
+ *  Query corrected 2026-10-05 against the live API. The original
+ *  `tags=electronic + featured=1 + boost=popularity_month + groupby=artist_id` returned
+ *  HTTP 200 with `results_count: 0` for a read-only client — the shelf was permanently
+ *  empty. Measured: `sort=popularity_total` returns 8 tracks on 6/6 calls, while adding
+ *  `tags=electronic` drops it to 1/6. So the chart is a real all-genre popularity ordering
+ *  and the tag filter stays opt-in for callers that have verified it returns data.
+ */
+export async function jamendoChart(limit = 8, tag?: string): Promise<JamendoTrack[]> {
+  const params: Record<string, string> = {
+    sort: 'popularity_total',
+    include: 'musicinfo+licenses',
     audioformat: 'mp32',
-    limit: String(Math.min(20, Math.max(1, limit)))
-  });
-  return (data.results ?? []).map((r) => mapTrack(r, 'mp32')).filter((t): t is JamendoTrack => !!t);
+    limit: String(Math.min(20, Math.max(1, limit))),
+    offset: '0'
+  };
+  if (tag) params.tags = tag;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const data = await call('/tracks/', params);
+    const mapped = (data.results ?? []).map((r) => mapTrack(r, 'mp32')).filter((t): t is JamendoTrack => !!t);
+    if (mapped.length > 0 || attempt === 1) return mapped;
+    await new Promise((r) => setTimeout(r, 350));
+  }
+  return [];
 }
 
 export function jamendoQualityLabel(t: JamendoTrack): string {

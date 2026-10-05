@@ -85,7 +85,9 @@ items are shown text-only and can never be played.
 ## Known limitations
 
 - Open catalogues are independent music: you won't find major-label studio albums there.
-- Jamendo activates with a free `client_id`; its public test key is suspended by Jamendo, so the owner's key is required for a live test.
+- Jamendo activates with a free read-only `client_id` (`VITE_JAMENDO_CLIENT_ID`, or paste
+  it in Settings). Without one the provider stays off and says so. Jamendo's own public
+  demo key is suspended by Jamendo, so it does not work as a default.
 - Live recordings vary in quality; the UI says so instead of hiding it.
 - Radio is live-only (no skipping, no on-demand).
 - Device-file audio doesn't survive a page reload (browser blob URLs) — metadata does; re-adding a file restores it.

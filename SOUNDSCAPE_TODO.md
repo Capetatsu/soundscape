@@ -99,7 +99,20 @@
 
 ## MASTER MISSION — final completion pass (2026-10-05)
 - [x] P0 baseline: tree clean, npm install up-to-date, tsc clean, build green
-- [x] P1 Jamendo (see above; live test needs owner's key)
+- [x] P1 Jamendo — **LIVE** with owner's read-only key (`acde4470`). Search returns real
+      results with per-row source+format badges; 2 Jamendo HTTP calls per search confirmed.
+      Two bugs found and fixed to get here:
+      1. **Build-time env read was silently dead.** `jamendoClientId()` aliased `import.meta`
+         into a local var to stay "safe outside Vite", which defeats Vite's define-time
+         substitution — it compiled to a *runtime* `import.meta.env?.X` where `import.meta.env`
+         does not exist in an ES build, so the key was always `undefined` and the provider
+         reported itself unconfigured without ever making a request. Fixed with a shared
+         `src/config/env.ts` helper using a direct member expression + try/catch.
+         Verified in the bundle: the key is now a literal and zero runtime
+         `import.meta.env` references remain.
+      2. Icon font never loaded (see P20) — separate root cause, also silent.
+      Lesson recorded: the original "Jamendo is configured" assertion passed by only checking
+      for the *absence* of a string; it gave a false green. Assertions now check positive state.
 - [x] P2 capability model: registry describeProviders + jamendo effective caps; Diagnostics matrix + server config cards
 - [x] P3 unified search: merged ranking (Jamendo→Audius), exact-duplicate merge, per-row source+quality badges, load-more pagination
 - [x] P4 Home: real Recently-played shelf (listening events + track store), Spotify shelf demoted to small upsell
@@ -114,6 +127,14 @@
 - [x] P14 offline banner (online/offline events, honest capability note)
 - [x] P21 security: no eval/innerHTML/secrets (grep clean); redacted token-exchange logging; postMessage origin check intact
 - [x] P20 a11y: 40px tap targets on search rows, aria-labels on icon buttons, Escape everywhere, prefers-reduced-motion
+- [x] P20b **Icons were broken app-wide and no functional test caught it**: `fonts.googleapis.com`
+      returns a bot-detection HTML interstitial on this network instead of CSS, so all 25
+      Material Symbols icons rendered as raw ligature text (`play_arrow`, `playlist_add`,
+      `home`) overlapping buttons. Only a screenshot exposed it. Fixed by self-hosting both
+      fonts via `@fontsource` (Material Symbols 400 + Plus Jakarta Sans 400–800), authored the
+      `.material-symbols-outlined` utility class fontsource doesn't ship, and dropped all
+      external font origins from prod CSP (`font-src 'self'`). Verified: 15 icons glyph-shaped,
+      `@font-face` loaded, zero requests to fonts.googleapis/gstatic.
 - [x] P26 MASTER E2E: **29/29 green** on the production build — load, no console errors,
       catalogue search, full-length play, trusted-drag seek (clock 176s), volume+mute,
       queue list + Escape close, next/previous, playlist create/add/list/open/play-all,

@@ -98,7 +98,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       });
     // Jamendo chart: only when configured — otherwise the provider stays off.
     if (jamendoConfigured()) {
-      jamendoChart('electronic', 8)
+      // All-genre popularity chart. The old `tags=electronic` filter returns zero rows for
+      // a read-only client (verified against the live API), which left this shelf empty.
+      jamendoChart(8)
         .then((items: JamendoTrack[]) => {
           if (!isMounted) return;
           setJamendoTop(

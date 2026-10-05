@@ -29,9 +29,12 @@ live verification needs an external key/credential the owner supplies · [ ] not
 - [x] Self-hosted server (Subsonic/Navidrome/Jellyfin/Gonic): MD5 token auth,
       connect-and-test, search, stream, cover art; credentials session-only
 - [x] Capability matrix surfaced in Diagnostics so no source over-claims
-- [~] Jamendo live search/playback — implemented end to end; Jamendo's public test key
-      returns "Application Suspended", so the owner's `JAMENDO_CLIENT_ID` is required.
-      Until then the provider stays cleanly disabled and says so.
+- [x] Jamendo live search/playback with the owner's read-only `client_id` — real results
+      with per-row quality badges. Two silent bugs were fixed to reach this state: the
+      build-time env read never worked (aliased `import.meta` defeated Vite's substitution,
+      so the key was always `undefined` and the provider quietly stayed off), and the icon
+      font was never loading from the CDN. Without a key the provider still disables itself
+      cleanly and says so.
 
 ## Honesty and compliance
 - [x] No fabricated tracks, lyrics, stats, availability, sync claims, or AI fallback
