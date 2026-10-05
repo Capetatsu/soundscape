@@ -165,6 +165,7 @@
 - [~] P18/P19 final visual sweep (screenshots captured at 1440px + 390px; review below)
 - [x] P22 perf sign-off: unimported `motion` + `lucide-react` removed (6 packages),
       no new heavy deps; bundle 471KB / ~127KB gzip
+- [ ] P26b Jamendo FLAC-first claim — IN PROGRESS, awaiting real-playback verification
 - [x] P23 resilience **9/9 green**: Audius down → Archive still serves + honest
       "unreachable" note; Archive down → free catalogue still serves; offline → banner
       shows AND local file keeps playing; unreachable server → honest "Not connected".

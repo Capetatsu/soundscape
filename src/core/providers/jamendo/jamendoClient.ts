@@ -92,11 +92,32 @@ interface RawTrack {
   lyrics?: string;
 }
 
+/**
+ * Work out what Jamendo will actually stream.
+ *
+ * Jamendo returns audio as a `format=` QUERY PARAMETER, e.g.
+ *   https://prod-1.storage.jamendo.com/?trackid=1348699&format=flac&from=...
+ * There is no file extension at all. Matching on `\.flac` therefore never matched, FLAC was
+ * reported as MP3, and "FLAC first" could never return a FLAC stream even though the API
+ * happily serves one — verified live 2026-10-05. The extension checks remain as a fallback for
+ * any other URL shape.
+ */
+function detectAudioFormat(url: string, requested: JamendoFormat): JamendoTrack['audioFormat'] {
+  const q = /[?&]format=([a-z0-9]+)/i.exec(url)?.[1]?.toLowerCase();
+  if (q === 'flac') return 'flac';
+  if (q === 'mp32') return 'mp32';
+  if (q === 'mp31') return 'mp31';
+  if (q === 'ogg') return 'ogg';
+  if (/\.flac(\?|$)/i.test(url)) return 'flac';
+  if (/\.ogg(\?|$)/i.test(url)) return 'ogg';
+  if (/\.mp3(\?|$)/i.test(url)) return requested === 'mp32' ? 'mp32' : 'mp31';
+  return requested === 'mp32' ? 'mp32' : 'mp31';
+}
+
 function mapTrack(raw: RawTrack, requested: JamendoFormat): JamendoTrack | null {
   if (raw.id === undefined || !raw.name || !raw.audio) return null;
   const url = raw.audio;
-  const actual: JamendoTrack['audioFormat'] =
-    /\.flac(\?|$)/i.test(url) ? 'flac' : /\.ogg(\?|$)/i.test(url) ? 'ogg' : /\.mp3(\?|$)/i.test(url) && requested === 'mp32' ? 'mp32' : 'mp31';
+  const actual = detectAudioFormat(url, requested);
   return {
     id: String(raw.id),
     name: raw.name,
