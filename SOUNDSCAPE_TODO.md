@@ -165,7 +165,19 @@
 - [~] P18/P19 final visual sweep (screenshots captured at 1440px + 390px; review below)
 - [x] P22 perf sign-off: unimported `motion` + `lucide-react` removed (6 packages),
       no new heavy deps; bundle 471KB / ~127KB gzip
-- [ ] P26b Jamendo FLAC-first claim — IN PROGRESS, awaiting real-playback verification
+- [x] P26b Jamendo FLAC-first **verified end to end**: with FLAC-first enabled the app requests
+      and receives a real FLAC stream (`HTTP 206`, `?format=flac`) and the player shows
+      "Playing from Jamendo (FLAC)." Three bugs stood between the README claim and reality:
+      1. Format detection matched `\.flac` on the URL — Jamendo serves audio as a `format=`
+         QUERY PARAM (`?trackid=…&format=flac`) with no extension, so FLAC was always reported
+         as MP3 and "FLAC first" could never return FLAC. Now parses the param (extension kept
+         as fallback).
+      2. The resolve notice was overwritten by "Buffering…" within ~500ms and then blanked, so
+         the real format was never visible — the search row's "MP3 VBR" was the only label a
+         user saw. Buffering now restores the true source+format notice instead of nulling it.
+      3. My first "FLAC available" check was worthless: it tested `!!(t.audio||'').length`,
+         which only proves *a* URL exists, not that it's FLAC. Verified the actual bytes/URL
+         served before believing the claim.
 - [x] P23 resilience **9/9 green**: Audius down → Archive still serves + honest
       "unreachable" note; Archive down → free catalogue still serves; offline → banner
       shows AND local file keeps playing; unreachable server → honest "Not connected".
@@ -205,7 +217,8 @@
 
 ## Blocked on live credentials (implemented + failure-path tested, needs a real account)
 - [x] Jamendo live search/playback — **CLEARED** via owner's read-only key (`acde4470`,
-      in `.env` as `VITE_JAMENDO_CLIENT_ID`, gitignored). 8/8 first-play rate measured.
+      in `.env` as `VITE_JAMENDO_CLIENT_ID`, gitignored). 8/8 first-play rate measured,
+      FLAC-first verified against a real served stream.
 - [ ] M2 E2E: login → status connected → token → logout destroys session (Spotify only)
 - [ ] M4/M5 live pass: real playlist sync counts + audible SDK playback on Premium desktop Chrome
 - How to clear: set `SPOTIFY_CLIENT_ID` + REDIRECT_URI, `npm run dev`, Connect Spotify, Sync Now, play a track.

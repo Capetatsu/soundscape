@@ -29,12 +29,14 @@ live verification needs an external key/credential the owner supplies · [ ] not
 - [x] Self-hosted server (Subsonic/Navidrome/Jellyfin/Gonic): MD5 token auth,
       connect-and-test, search, stream, cover art; credentials session-only
 - [x] Capability matrix surfaced in Diagnostics so no source over-claims
-- [x] Jamendo live search/playback with the owner's read-only `client_id` — real results
-      with per-row quality badges. Two silent bugs were fixed to reach this state: the
-      build-time env read never worked (aliased `import.meta` defeated Vite's substitution,
-      so the key was always `undefined` and the provider quietly stayed off), and the icon
-      font was never loading from the CDN. Without a key the provider still disables itself
-      cleanly and says so.
+- [x] Jamendo live search/playback with the owner's read-only `client_id` — real results with
+      per-row quality badges; **FLAC-first verified against an actually served stream**
+      (`HTTP 206`, `?format=flac`) with the player displaying "Playing from Jamendo (FLAC)."
+      Measured first-play reliability 8/8 across fresh sessions.
+- [x] Without a key the provider still disables itself cleanly and says so.
+- [x] Upstream honesty about Jamendo: its free tier intermittently answers HTTP 200 with zero
+      results (~50% of identical calls). Soundscape retries, reuses the playable URL from
+      search instead of spending another request, and says so in the README.
 
 ## Honesty and compliance
 - [x] No fabricated tracks, lyrics, stats, availability, sync claims, or AI fallback
@@ -48,11 +50,15 @@ live verification needs an external key/credential the owner supplies · [ ] not
 
 ## Quality
 - [x] `tsc --noEmit` clean; production build green
-- [x] Master E2E suite 29/29 green on the production build, including:
+- [x] Master E2E suite **30/30** green on the production build, including:
       zero Spotify API requests for the whole session, no horizontal overflow at
       390 / 768 / 1024 px, no console errors, all playback paths real
-- [x] Resilience suite: provider down → siblings still serve; offline → honest banner
-      with local files still playing; unreachable server → honest connection failure
+- [x] Resilience suite **9/9**: provider down → siblings still serve *and the outage is named
+      per source*; offline → honest banner with local files still playing; unreachable server →
+      honest connection failure. Zero crashes in every scenario.
+- [x] Jamendo first-play reliability measured 8/8 across fresh sessions (not a single sample)
+- [x] Icons self-hosted — a CDN-hosted icon font was silently rendering every icon as raw
+      ligature text on networks where the font host is bot-gated; prod CSP is now `font-src 'self'`
 - [x] No-mock policy upheld (no fixtures, demo data, or oscillator playback in prod)
 - [x] 40 px tap targets on search rows, `aria-label`s on icon-only buttons,
       `prefers-reduced-motion` honoured
