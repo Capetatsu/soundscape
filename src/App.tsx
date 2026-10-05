@@ -592,6 +592,24 @@ export const App: React.FC = () => {
   nextRef.current = handleNext;
   prevRef.current = handlePrevious;
 
+  // Single global Escape manager: closes the TOPMOST modal only (P5/P20).
+  // Component-level competing listeners proved unreliable under re-render churn —
+  // one owner, topmost-first, no ordering races.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (playlistTarget) setPlaylistTarget(null);
+      else if (isQueueOpen) setIsQueueOpen(false);
+      else if (isLyricsOpen) setIsLyricsOpen(false);
+      else if (isFullPlayerOpen) setIsFullPlayerOpen(false);
+      else if (isDeviceModalOpen) setIsDeviceModalOpen(false);
+      else if (isAiDjOpen) setIsAiDjOpen(false);
+      else if (isDiagnosticsOpen) setIsDiagnosticsOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [playlistTarget, isQueueOpen, isLyricsOpen, isFullPlayerOpen, isDeviceModalOpen, isAiDjOpen, isDiagnosticsOpen]);
+
   useEffect(() => {
     audioService.setOnTrackEnded(() => nextRef.current());
     audioService.setOnNextRequested(() => nextRef.current());

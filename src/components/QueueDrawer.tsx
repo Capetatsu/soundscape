@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { SpotifyTrack } from '../types';
 
 interface QueueDrawerProps {
@@ -20,16 +20,7 @@ export const QueueDrawer: React.FC<QueueDrawerProps> = ({
   onRemoveFromQueue,
   onClearQueue
 }) => {
-  // Escape/backdrop must work on mount — declared before the early return below.
-  useEffect(() => {
-    if (!isOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [isOpen, onClose]);
-
+  // Escape is owned globally by App (topmost-first) — no local competing listener.
   if (!isOpen) return null;
 
   return (

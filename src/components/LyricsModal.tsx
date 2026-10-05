@@ -25,15 +25,7 @@ export const LyricsModal: React.FC<LyricsModalProps> = ({ isOpen, onClose, track
   const [lyricSource, setLyricSource] = useState<string>('LRCLIB');
   const activeRef = useRef<HTMLParagraphElement | null>(null);
   const [follow, setFollow] = useState(true);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [isOpen, onClose]);
+  // Escape is owned globally by App (topmost-first) — no local competing listener.
 
   useEffect(() => {
     if (!isOpen || !track) return;

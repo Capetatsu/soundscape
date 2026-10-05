@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { SpotifyTrack, SpotifyDevice } from '../types';
 
 interface FullPlayerModalProps {
@@ -67,15 +67,7 @@ export const FullPlayerModal: React.FC<FullPlayerModalProps> = ({
   const [isScrubbing, setIsScrubbing] = useState(false);
   const [scrubValue, setScrubValue] = useState(0);
   const [copiedLink, setCopiedLink] = useState(false);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [isOpen, onClose]);
+  // Escape is owned globally by App (topmost-first) — no local competing listener.
 
   if (!isOpen || !currentTrack) return null;
 
