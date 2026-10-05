@@ -103,6 +103,8 @@ export class AudioPlayerService {
   private sdkScriptLoading = false;
   private statsOpen = false;
   private localObjectUrl: string | null = null;
+  /** What is actually streaming (source + real format), restored after buffering clears. */
+  private openNotice: string | null = null;
 
   // Local-file DSP chain (WebAudio). Spotify streams NEVER route through this.
   private dsp: {
@@ -148,7 +150,11 @@ export class AudioPlayerService {
     });
     const clearBuffering = () => {
       if (this.playbackNotice === 'Buffering…') {
-        this.playbackNotice = null;
+        // Restore what is actually streaming instead of blanking it. Clearing to null threw
+        // away the source + real-format notice within half a second of every open-catalogue
+        // track, leaving the search row's "MP3 VBR" as the only visible format label — so a
+        // FLAC upgrade looked like it was still MP3.
+        this.playbackNotice = this.openNotice;
         this.notify();
       }
     };
@@ -397,6 +403,7 @@ export class AudioPlayerService {
     this.lastError = null;
     this.playbackMode = meta.mode;
     this.playbackNotice = meta.notice;
+    this.openNotice = meta.notice;
     this.controller.commandSent('play', meta.trackUri);
     // Persist open-catalogue metadata so stats/library can resolve real names later.
     if (this.currentTrack) {
