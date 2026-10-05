@@ -56,6 +56,27 @@ export function jamendoQualityPref(): JamendoFormat {
   }
 }
 
+/**
+ * Tracks already resolved by a search/chart call, keyed by id.
+ *
+ * Jamendo's free tier returns an empty result set for roughly half of all requests, so every
+ * extra round-trip is another ~50% coin flip. Search responses already contain the playable
+ * `audio` URL, so re-resolving at play time bought nothing but latency and failure. Cached
+ * entries are only reused when their format matches what the user actually asked for —
+ * with "FLAC first" enabled the cached MP3 is correctly ignored and a real resolve happens.
+ */
+const resolved = new Map<string, JamendoTrack>();
+
+function remember(track: JamendoTrack): void {
+  resolved.set(track.id, track);
+}
+
+function cachedForPref(id: string): JamendoTrack | null {
+  const hit = resolved.get(id);
+  if (!hit) return null;
+  return jamendoQualityPref() === 'flac' ? hit.audioFormat === 'flac' ? hit : null : hit;
+}
+
 interface RawTrack {
   id?: string | number;
   name?: string;
@@ -121,6 +142,7 @@ export async function jamendoSearchTracks(query: string, limit = 10, offset = 0)
   for (let attempt = 0; attempt < 2; attempt++) {
     const data = await call('/tracks/', params);
     const mapped = (data.results ?? []).map((r) => mapTrack(r, 'mp32')).filter((t): t is JamendoTrack => !!t);
+    mapped.forEach(remember);
     if (mapped.length > 0 || attempt === 1) return mapped;
     // Spurious empty response — retry once before concluding the query has no matches.
     await new Promise((r) => setTimeout(r, 350));
@@ -128,22 +150,41 @@ export async function jamendoSearchTracks(query: string, limit = 10, offset = 0)
   return [];
 }
 
-/** Resolve the best playable file for a track (FLAC when preferred AND provided). */
+/** Resolve the best playable file for a track (FLAC when preferred AND provided).
+ *
+ *  Retries like search: Jamendo's free tier intermittently returns HTTP 200 + zero rows for
+ *  an id query too, which without a retry made roughly half of all first-plays fail with
+ *  "Jamendo track unavailable" even though the track was playable.
+ */
 export async function jamendoResolveTrack(id: string): Promise<JamendoTrack> {
   const pref = jamendoQualityPref();
   if (pref === 'flac') {
     try {
       const data = await call('/tracks/', { id, audioformat: 'flac', limit: '1' });
       const t = (data.results ?? []).map((r) => mapTrack(r, 'flac')).find(Boolean);
-      if (t && t.audioFormat === 'flac') return t;
+      if (t && t.audioFormat === 'flac') {
+        remember(t);
+        return t;
+      }
     } catch {
       // fall through to MP3
     }
   }
-  const data = await call('/tracks/', { id, include: 'musicinfo+licenses', audioformat: 'mp32', limit: '1' });
-  const t = (data.results ?? []).map((r) => mapTrack(r, 'mp32')).find(Boolean);
-  if (!t) throw new Error('Jamendo track unavailable');
-  return t;
+  // A search/chart response already carried a playable URL for this id — reuse it instead of
+  // spending another ~50%-failure-rate request. With FLAC-first on, a cached MP3 is skipped.
+  const cached = cachedForPref(id);
+  if (cached) return cached;
+  const params = { id, include: 'musicinfo+licenses', audioformat: 'mp32', limit: '1' };
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const data = await call('/tracks/', params);
+    const t = (data.results ?? []).map((r) => mapTrack(r, 'mp32')).find(Boolean);
+    if (t) {
+      remember(t);
+      return t;
+    }
+    if (attempt < 3) await new Promise((r) => setTimeout(r, 400));
+  }
+  throw new Error('Jamendo track unavailable');
 }
 
 /** Popularity chart for discovery shelves.
@@ -167,6 +208,7 @@ export async function jamendoChart(limit = 8, tag?: string): Promise<JamendoTrac
   for (let attempt = 0; attempt < 2; attempt++) {
     const data = await call('/tracks/', params);
     const mapped = (data.results ?? []).map((r) => mapTrack(r, 'mp32')).filter((t): t is JamendoTrack => !!t);
+    mapped.forEach(remember);
     if (mapped.length > 0 || attempt === 1) return mapped;
     await new Promise((r) => setTimeout(r, 350));
   }
