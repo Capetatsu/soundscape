@@ -3,6 +3,27 @@
 > New phase order: P-A Audius → P-B Jamendo → P-C Archive → P-D Radio + Spotify demotion
 > (remove preview paths) → P-E/F gated subscriber modules. P0–P3 below are DONE as built.
 
+## Status as built (2026-10-05, final pass)
+| Phase | Outcome |
+|---|---|
+| P0 Audit & cleanup | **Done** — security fixes, single lockfile, `/healthz` |
+| P1 Provider abstraction | **Done** — `core/providers` interfaces, capability matrix, typed errors |
+| P2 Spotify account + library sync | **Implemented**, failure paths tested; live round trip needs owner credentials |
+| P3 Real playback | **Done** — phase machine, MediaSession, Diagnostics ladder, device picker |
+| P4 Local playback | **Done** (FLAC/MP3/AAC/WAV/OGG + EQ + normalization + safety limiter + Subsonic). **Crossfade/gapless not built** — honestly deferred, never claimed |
+| P5 Lyrics | **Done** — provider-first, LRCLIB fallback, follow/pause, honest "No lyrics" |
+| P6 Search & discovery | **Done** — federated ranking across Audius/Jamendo/Archive, dedupe, real pagination, home recents. No hardcoded content |
+| P7 Offline | **Partial, by design** — offline banner + local files/radio-independent state keep working; the OPFS download manager for own-server files is **not built**, so no "download" affordance is shown |
+| P8 Statistics | **Done** — real listening events only, export/delete, skip counts |
+| P9 Customization | **Partial** — reduced-motion honoured, 40 px tap targets, aria-labels; themes/density/player-style variants not built |
+| P10 AI | **Done** — DJ with strict response guards, no fake fallback, unmatched items non-playable |
+| P11 Social | **Deferred honestly** — "Listen Together" shown as coming soon, no fake sessions |
+| P12 Devices | **Done for what Spotify allows** — Connect transfer + volume; advanced device control deferred |
+| P13 Performance & hardening | **Done** — CSP, budgets, unimported deps removed, resilience suite green |
+| P14 Release prep | **Done** — docs, README limitations, honest Definition of Done (doc 28) |
+
+Verification: master E2E **29/29**, resilience **9/9**, on the production build.
+
 Each phase: Deliverables · Depends · Tests · Acceptance · Failure condition (stop & fix).
 
 **P0 Audit & cleanup** — D: M0+M1 (doc 24), spike results, single lockfile, security fixes. Dep: none. T: OA-1..4, AI-2. A: no reflected params; no hardcoded IDs; spike doc lists which Spotify endpoints work. F: any Spotify core endpoint unavailable → re-plan before P2.
