@@ -100,8 +100,9 @@
 ## MASTER MISSION — final completion pass (2026-10-05)
 - [x] P0 baseline: tree clean, npm install up-to-date, tsc clean, build green
 - [x] P1 Jamendo — **LIVE** with owner's read-only key (`acde4470`). Search returns real
-      results with per-row source+format badges; 2 Jamendo HTTP calls per search confirmed.
-      Two bugs found and fixed to get here:
+      results with per-row source+format badges. **First-play rate measured 8/8 (100%)**
+      across repeated fresh sessions after the fixes below.
+      Four bugs found and fixed to get here:
       1. **Build-time env read was silently dead.** `jamendoClientId()` aliased `import.meta`
          into a local var to stay "safe outside Vite", which defeats Vite's define-time
          substitution — it compiled to a *runtime* `import.meta.env?.X` where `import.meta.env`
@@ -110,9 +111,28 @@
          `src/config/env.ts` helper using a direct member expression + try/catch.
          Verified in the bundle: the key is now a literal and zero runtime
          `import.meta.env` references remain.
-      2. Icon font never loaded (see P20) — separate root cause, also silent.
+      2. **MediaSession.playbackState was never set** — OS media controls (lock screen,
+         headsets, hardware keys) had no play/pause state at all. Now synced from `isPlaying`
+         inside `notify()`, the choke point every confirmed state change already passes
+         through, so the OS can never advertise audio that isn't actually playing.
+      3. **Jamendo's free tier returns HTTP 200 + `results_count: 0` for ~50% of identical
+         requests** (measured `synthwave` 4/8, `ambient` 2/8, replayed byte-identical URLs).
+         Upstream flakiness, not an app bug — but it made the provider look broken at random.
+         Three responses:
+         - Search/chart retry (4 attempts → ~6% residual false "no matches").
+         - **Removed the redundant play-time resolve entirely**: search already returns the
+           playable `audio` URL, so re-resolving cost latency *and* another 50% coin flip.
+           Cache is keyed by id and format-checked — with FLAC-first on, a cached MP3 is
+           ignored so a real FLAC resolve still happens and the quality label stays honest.
+         - Resolve keeps 4 attempts for cold ids (e.g. deep links).
+         Measured first-play rate before this fix: 5/6 with the only failure at *search*.
+      4. Home chart query `tags=electronic + featured=1` returns 0 rows for a read-only
+         client, so the shelf was permanently empty. `sort=popularity_total` measured 6/6
+         reliable; adding the tag dropped it to 1/6. Chart is now a real popularity ordering.
       Lesson recorded: the original "Jamendo is configured" assertion passed by only checking
       for the *absence* of a string; it gave a false green. Assertions now check positive state.
+      Second lesson: retrying harder is the wrong fix when a redundant request can be
+      *removed* — that was the actual defect.
 - [x] P2 capability model: registry describeProviders + jamendo effective caps; Diagnostics matrix + server config cards
 - [x] P3 unified search: merged ranking (Jamendo→Audius), exact-duplicate merge, per-row source+quality badges, load-more pagination
 - [x] P4 Home: real Recently-played shelf (listening events + track store), Spotify shelf demoted to small upsell

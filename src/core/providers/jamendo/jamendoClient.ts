@@ -139,13 +139,14 @@ export async function jamendoSearchTracks(query: string, limit = 10, offset = 0)
     limit: String(Math.min(20, Math.max(1, limit))),
     offset: String(Math.max(0, offset))
   };
-  for (let attempt = 0; attempt < 2; attempt++) {
+  for (let attempt = 0; attempt < 4; attempt++) {
     const data = await call('/tracks/', params);
     const mapped = (data.results ?? []).map((r) => mapTrack(r, 'mp32')).filter((t): t is JamendoTrack => !!t);
     mapped.forEach(remember);
-    if (mapped.length > 0 || attempt === 1) return mapped;
-    // Spurious empty response — retry once before concluding the query has no matches.
-    await new Promise((r) => setTimeout(r, 350));
+    // 4 attempts at a ~50% per-call empty rate leaves roughly a 6% chance of a false "no
+    // matches". Below that threshold, showing Audius-only results is the honest outcome.
+    if (mapped.length > 0 || attempt === 3) return mapped;
+    await new Promise((r) => setTimeout(r, 400));
   }
   return [];
 }
@@ -205,12 +206,12 @@ export async function jamendoChart(limit = 8, tag?: string): Promise<JamendoTrac
     offset: '0'
   };
   if (tag) params.tags = tag;
-  for (let attempt = 0; attempt < 2; attempt++) {
+  for (let attempt = 0; attempt < 4; attempt++) {
     const data = await call('/tracks/', params);
     const mapped = (data.results ?? []).map((r) => mapTrack(r, 'mp32')).filter((t): t is JamendoTrack => !!t);
     mapped.forEach(remember);
-    if (mapped.length > 0 || attempt === 1) return mapped;
-    await new Promise((r) => setTimeout(r, 350));
+    if (mapped.length > 0 || attempt === 3) return mapped;
+    await new Promise((r) => setTimeout(r, 400));
   }
   return [];
 }
