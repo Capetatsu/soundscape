@@ -116,19 +116,21 @@ const anyClock = (p) => p.evaluate(() =>
   await p.close();
 }
 
-// ---- Local file from this device ----
+// ---- Local file from this device (lossless FLAC) ----
 {
   const p = await newPage();
   const fixture = resolveLocalFixture();
+  pass('D0. lossless FLAC fixture in use (not a silent PCM fallback)', /fixture-test\.flac$/i.test(fixture),
+    fixture.split(/[\\/]/).pop());
   await p.locator('#nav-library-btn').click();
   await p.waitForTimeout(1200);
   await p.locator('input[type="file"]').setInputFiles(fixture);
   await p.waitForTimeout(4000);
   const listed = await p.locator('body').innerText();
-  pass('D1. Local file listed on the device shelf', /fixture-5s|fixture-test/i.test(listed), fixture.split(/[\\/]/).pop());
-  await p.locator('text=fixture-5s').first().click().catch(() => {});
+  pass('D1. Local file listed on the device shelf', /fixture-test/i.test(listed));
+  await p.locator('text=fixture-test').first().click().catch(() => {});
   const ok = await playing(p);
-  pass('D2. Local file playback confirmed', ok);
+  pass('D2. Local FLAC playback confirmed', ok);
   await p.close();
 }
 

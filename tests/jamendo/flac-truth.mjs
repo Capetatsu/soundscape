@@ -25,10 +25,13 @@ let mp3Served = false;
 const seen = [];
 p.on('response', (r) => {
   const u = r.url();
-  if (/jamendo\.com/.test(u) && /format=/.test(u)) {
-    seen.push(`${r.status()} ${u.slice(0, 70)}`);
-    if (/format=flac/.test(u)) flacServed = true;
-    if (/format=mp3/.test(u)) mp3Served = true;
+  // Only the audio CDN tells us what was ACTUALLY streamed. Matching `format=` anywhere in
+  // jamendo.com also matches `audioformat=` on API metadata requests, which made this check
+  // read a FLAC *probe* as if FLAC had been served — and then fail an honest MP3 fallback.
+  if (/storage\.jamendo\.com/.test(u)) {
+    seen.push(`${r.status()} ${u.slice(0, 80)}`);
+    if (/[?&]format=flac/.test(u)) flacServed = true;
+    if (/[?&]format=mp3/.test(u)) mp3Served = true;
   }
 });
 
@@ -49,9 +52,11 @@ for (let i = 0; i < 20 && !notice; i++) {
   });
 }
 pass('1. player states what is actually streaming', !!notice, JSON.stringify(notice));
-pass('2. label agrees with the served file',
+// The honesty requirement, in both directions: claim FLAC only if a FLAC file was really
+// streamed, and do not claim it when the provider fell back to MP3.
+pass('2. label agrees with the file actually streamed',
   !notice || (flacServed ? /FLAC/.test(notice) : !/FLAC/.test(notice)),
-  `flacServed=${flacServed} mp3Served=${mp3Served}`);
+  `flacStreamed=${flacServed} mp3Streamed=${mp3Served}`);
 
 let played = false;
 try {

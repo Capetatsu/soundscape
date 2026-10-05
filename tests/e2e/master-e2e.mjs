@@ -3,7 +3,7 @@
 import { chromium } from 'playwright-core';
 import { BASE, CHROMIUM_ARGS, shotPath, resolveLocalFixture, isAppError, createReporter, jamendoKeyLeakRegex } from '../lib/harness.mjs';
 
-const { pass, finish } = createReporter('MASTER E2E', 30);
+const { pass, finish } = createReporter('MASTER E2E', 32);
 
 const browser = await chromium.launch({ args: CHROMIUM_ARGS });
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
@@ -60,9 +60,15 @@ const playing = await waitForPlaying(30000);
 pass('3. full-length track plays', playing, `${firstRowTitle} | ${(await miniTitle()) || ''}`);
 
 // 3. Seek (trusted drag — synthetic events give false failures on media controls)
+// Wait for the expanded player to actually render before locating the scrubber. Previously a
+// fixed 900 ms sleep was followed by `if (box) {...}`, so if the modal was slow the drag was
+// silently skipped and the check then failed as "seek did not work" — a misleading result.
+// A missing scrubber is now reported as its own setup failure.
 await page.locator('#mini-player-container').click();
-await page.waitForTimeout(900);
-const box = await page.locator('input[type="range"]').first().boundingBox();
+let scrubber = page.locator('input[type="range"]').first();
+const scrubberReady = await scrubber.waitFor({ state: 'visible', timeout: 15000 }).then(() => true).catch(() => false);
+const box = scrubberReady ? await scrubber.boundingBox() : null;
+pass('4a. full player timeline scrubber present', !!box);
 if (box) {
   await page.mouse.move(box.x + box.width * 0.1, box.y + box.height / 2);
   await page.mouse.down();
@@ -152,13 +158,17 @@ if ((await rows.count()) > 0) {
 } else pass('11. radio station plays', false, 'no stations');
 await page.locator('#mini-player-play-btn').click();
 
-// 10. Local file from this device
+// 10. Local lossless file from this device.
+// The committed fixture-test.flac is genuine lossless FLAC (see fixtures/make-flac-fixture.mjs),
+// so this exercises the FLAC decode path on a fresh clone rather than only PCM.
 const fixture = resolveLocalFixture();
+pass('12a. lossless FLAC fixture in use', /fixture-test\.flac$/i.test(fixture), fixture.split(/[\\/]/).pop());
 await page.locator('#nav-library-btn').click();
 await page.waitForTimeout(800);
 await page.locator('input[type="file"]').setInputFiles(fixture);
-await page.waitForTimeout(3500);
-pass('12. local file plays', (await miniIcon()) === 'pause', `${fixture.split(/[\\/]/).pop()} | ${(await miniTitle()) || ''}`);
+// Wait for confirmed playback rather than a fixed sleep: the upload auto-plays, and the
+// contract under test is "real audio advancing", not "N seconds elapsed".
+pass('12. local FLAC plays', await waitForPlaying(25000), `${fixture.split(/[\\/]/).pop()} | ${(await miniTitle()) || ''}`);
 await page.locator('#mini-player-play-btn').click();
 
 // 11. Stats after real playback
